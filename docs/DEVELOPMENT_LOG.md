@@ -2,6 +2,17 @@
 
 Record of what was done, when, and by whom. Newest entries at the top.
 
+## 2026-11-18 — Telemetry collector and SQLite storage layer (Issue #5)
+
+- Branch: `feature/collector` created from `main`.
+- Implemented `database/db.py`: SQLite storage layer with `measurements` table (id, timestamp, target_type, target_id, latency_ms, loss_pct, status) and indexes on `(target_id, timestamp)` and `(timestamp)`. Provides `init_db(path)`, `insert_measurements(rows, path)`, `query_measurements(target_id, start, end, path)`, and `get_connection(path)`.
+- Implemented `monitoring/collector.py`: `Collector` class taking a simulator instance, poll interval (default 5s), and database path. Implements `collect_once()` with error-logging resilience, and `run(duration_seconds)` with clean loop termination via `stop()`.
+- Created package exports in `database/__init__.py` and `monitoring/__init__.py`.
+- Created automated test suites:
+  - `tests/test_db.py` (9 tests covering table creation, indexes, batch insertion, target_id and timestamp filtering, ordering, directory creation).
+  - `tests/test_collector.py` (8 tests covering round-trip storage, history accumulation, fault recording in SQLite, error logging on simulator failure, duration-based looping, early termination, and intermittent failure resilience).
+- All 43 tests passing (`pytest`). Kept locally on `feature/collector` for review before pushing.
+
 ## 2026-11-18 — Network simulator implementation (Issue #7)
 
 - Branch: `feature/simulator` created from `main`.

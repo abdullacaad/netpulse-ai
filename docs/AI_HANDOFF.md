@@ -8,6 +8,13 @@ Updated whenever work is transferred between assistants. Each entry states what 
 - The assistant starting work reads the latest entry plus `docs/PROJECT_CONTEXT.md` first.
 - State facts only: file paths, test results, open questions. Never claim work is complete unless it is implemented, tested and merged.
 
+## 2026-11-18 — Telemetry collector and SQLite storage layer (Antigravity → Maintainer / Claude)
+
+- **Implemented, awaiting review:** Implemented GitHub issue #5 (telemetry collector) on branch `feature/collector` (branched from `main`). Created `database/db.py`, `database/__init__.py`, `monitoring/collector.py`, `monitoring/__init__.py`, `tests/test_db.py`, and `tests/test_collector.py`.
+- **Verified:** 43/43 pytest tests passing (`pytest`). Database schema and round-trip verified (indexes, insertion, query by target and time range). Collector verified polling simulator, storing measurements, recording injected faults, handling poll errors gracefully, and running for scheduled intervals.
+- **Status:** Branch is local (`feature/collector`) and unpushed per maintainer instructions. Awaiting review.
+- **Next:** Maintainer review and Claude independent code review.
+
 ## 2026-11-18 — Network simulator implementation (Antigravity → Maintainer / Claude)
 
 - **Implemented, awaiting review:** Implemented GitHub issue #7 (Network simulator) on branch `feature/simulator`. Created `network/topology.py`, `network/simulator.py`, `network/__init__.py`, `pytest.ini`, and comprehensive automated test suite `tests/test_simulator.py`. Applied PR #8 review fixes: attached links fail on `node_down`, `get_measurements()` returns copies, `base_time` defaults to `datetime.now(timezone.utc)`, unconditional RNG jitter, strict duration validation, and unhashable target handling.
