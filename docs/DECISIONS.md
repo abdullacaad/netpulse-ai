@@ -35,3 +35,9 @@ Decisions are recorded with date, context and status. Reversed decisions stay he
 ## 2026-11-18 — Feature branches and pull requests, human approval
 
 **Decision:** All work happens on feature branches and merges through pull requests. Nothing merges without the maintainer's approval. Never delete branches, overwrite `main`, or force-push without approval.
+
+## 2026-11-18 — Downstream reachability deferred to diagnosis phase
+
+**Decision:** When a node goes down (`node_down`), attached links report down (status "down", 100% loss, 0.0 latency), but cascading failure propagation to downstream nodes (nodes and links further down the tree behind the failure) is deferred. The simulator reports localized link and node status; full downstream reachability modeling will be decided before the Week 5–6 root-cause diagnosis work.
+
+**Why:** Keeps the Week 1–2 simulator interface clean, fast, and focused on direct fault injection without prematurely coupling simulator logic to path-walking routing logic.
