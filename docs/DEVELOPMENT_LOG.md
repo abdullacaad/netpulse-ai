@@ -9,9 +9,9 @@ Record of what was done, when, and by whom. Newest entries at the top.
 - Configured baseline latency and attributes: core links ~5ms, distribution links ~15ms, access/customer links ~30ms, healthy loss < 0.5%.
 - Implemented `network/simulator.py`: `Simulator` class with reproducible fixed random seed, tick step advancement, telemetry measurement generation (`{timestamp, target_type, target_id, latency_ms, loss_pct, status}`), and fault injection (`congestion`, `node_down`, `flapping`) with duration tracking and manual/auto clearing.
 - Created `network/__init__.py` exporting public classes and helpers.
-- Added `pytest.ini` and created comprehensive test suite `tests/test_simulator.py` (19 tests covering topology node/link counts, attributes, connectivity, simulator schema, seed reproducibility, fault injection and restoration).
-- All 19 tests passing.
-- Changes kept locally on `feature/simulator` without pushing, ready for review.
+- Added `pytest.ini` and created comprehensive test suite `tests/test_simulator.py` (26 tests covering topology node/link counts, attributes, connectivity, simulator schema, seed reproducibility, fault injection and restoration).
+- Applied PR #8 review fixes: attached links go down on `node_down` (status "down", 100% loss); `get_measurements()` returns copies and documents staleness; default `base_time` set to `datetime.now(timezone.utc)`; RNG jitter drawn unconditionally to keep targets independent; duration strictly validated (rejects bool, NaN, float); `clear_fault` safely handles unhashable targets.
+- All 26 tests passing.
 
 ## 2026-11-18 — Project setup and repository scaffold
 

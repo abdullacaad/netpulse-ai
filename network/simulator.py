@@ -48,9 +48,9 @@ class Simulator:
         self.step_interval_seconds = step_interval_seconds
         self.step_count: int = 0
 
-        # Base timestamp for deterministic simulation runs
+        # Base timestamp for simulation clock (default: current UTC time)
         if base_time is None:
-            self.base_time = datetime(2026, 11, 18, 0, 0, 0, tzinfo=timezone.utc)
+            self.base_time = datetime.now(timezone.utc)
         elif isinstance(base_time, str):
             self.base_time = datetime.fromisoformat(base_time)
             if self.base_time.tzinfo is None:
@@ -108,14 +108,20 @@ class Simulator:
             return "node", target
 
         # Check link in lookup
-        if target in self._link_lookup:
-            return "link", self._link_lookup[target]
+        try:
+            if target in self._link_lookup:
+                return "link", self._link_lookup[target]
+        except TypeError:
+            pass
 
         # Check tuple (u, v)
         if isinstance(target, tuple) and len(target) == 2:
             u, v = target
-            if (u, v) in self._link_lookup:
-                return "link", self._link_lookup[(u, v)]
+            try:
+                if (u, v) in self._link_lookup:
+                    return "link", self._link_lookup[(u, v)]
+            except TypeError:
+                pass
 
         # Check string with separator
         if isinstance(target, str):
@@ -140,7 +146,7 @@ class Simulator:
             kind: 'congestion' | 'node_down' | 'flapping'
             target: Node ID (str) or Link ID (tuple or str, e.g. ('core_1', 'dist_1') or 'core_1-dist_1')
             duration: Number of ticks this fault remains active.
-                      If None, lasts indefinitely until clear_fault() is called.
+                      Must be a positive integer or None (lasts indefinitely).
         """
         valid_kinds = {"congestion", "node_down", "flapping"}
         if kind not in valid_kinds:
@@ -148,8 +154,11 @@ class Simulator:
                 f"Unknown fault kind '{kind}'. Valid kinds are: {', '.join(sorted(valid_kinds))}"
             )
 
-        if duration is not None and duration <= 0:
-            raise ValueError("duration must be a positive integer or None")
+        if duration is not None:
+            if isinstance(duration, bool) or not isinstance(duration, int):
+                raise TypeError("duration must be an integer or None")
+            if duration <= 0:
+                raise ValueError("duration must be a positive integer")
 
         target_type, canonical_id = self._resolve_target(target)
 
@@ -179,7 +188,7 @@ class Simulator:
         """
         try:
             _, canonical_id = self._resolve_target(target)
-        except ValueError:
+        except (ValueError, TypeError):
             return False
 
         if canonical_id in self.active_faults:
@@ -206,8 +215,7 @@ class Simulator:
         self.step_count += 1
 
         # Generate measurements for the new step
-        measurements = self._generate_measurements()
-        self._latest_measurements = measurements
+        self._latest_measurements = self._generate_measurements()
 
         # Decrement remaining ticks for active faults and remove expired
         expired = []
@@ -220,16 +228,20 @@ class Simulator:
         for target_id in expired:
             del self.active_faults[target_id]
 
-        return measurements
+        return self.get_measurements()
 
     def get_measurements(self) -> List[Dict[str, Any]]:
-        """Return measurements for current step.
+        """Return copies of the measurements for the current step.
 
-        If tick() has not been called yet, generates initial step-0 measurements.
+        Measurements reflect the state at the most recent tick() (or initial state
+        before the first tick). Note that measurements are stale until the next tick() is called.
+
+        Returns:
+            A list of dict copies representing node and link measurements.
         """
         if self._latest_measurements is None:
             self._latest_measurements = self._generate_measurements()
-        return self._latest_measurements
+        return [dict(m) for m in self._latest_measurements]
 
     def _generate_measurements(self) -> List[Dict[str, Any]]:
         """Generate measurements for all nodes and links at current step."""
@@ -238,6 +250,10 @@ class Simulator:
 
         # 1. Node measurements
         for node_id, data in self.graph.nodes(data=True):
+            # Unconditionally draw jitter values so RNG stream is invariant to faults
+            node_latency_jitter = round(self.rng.uniform(0.8, 1.2), 2)
+            node_loss_jitter = round(self.rng.uniform(0.0, 0.1), 3)
+
             fault = self.active_faults.get(node_id)
             if fault and fault["kind"] == "node_down":
                 status = "down"
@@ -245,9 +261,8 @@ class Simulator:
                 latency_ms = 0.0
             else:
                 status = data.get("status", "up")
-                # Healthy node baseline: low latency, minimal loss (< 0.5%)
-                latency_ms = round(self.rng.uniform(0.8, 1.2), 2)
-                loss_pct = round(self.rng.uniform(0.0, 0.1), 3)
+                latency_ms = node_latency_jitter
+                loss_pct = node_loss_jitter
 
             measurements.append(
                 {
@@ -261,35 +276,45 @@ class Simulator:
             )
 
         # 2. Link measurements
+        # Compute set of down nodes once before evaluating links
+        down_nodes = {
+            tid for tid, f in self.active_faults.items() if f["kind"] == "node_down"
+        }
+
         for canonical_id, u, v, data in self._canonical_links:
             base_latency = data.get("latency_ms", 15.0)
+
+            # Unconditionally draw jitter values so RNG stream is invariant to faults
+            base_latency_jitter = self.rng.uniform(0.95, 1.05)
+            base_loss_jitter = round(self.rng.uniform(0.0, 0.25), 3)
+            cong_mult_jitter = self.rng.uniform(0.98, 1.02)
+            cong_loss_jitter = round(self.rng.uniform(1.0, 3.5), 3)
+
             fault = self.active_faults.get(canonical_id)
 
-            if fault and fault["kind"] == "congestion":
+            # Attached link goes down if either endpoint node is down
+            if u in down_nodes or v in down_nodes:
+                status, loss_pct, latency_ms = "down", 100.0, 0.0
+            elif fault and fault["kind"] == "congestion":
                 # Congestion: latency ~5x baseline, link status up
                 status = "up"
-                latency_jitter = self.rng.uniform(0.98, 1.02)
-                latency_ms = round(base_latency * 5.0 * latency_jitter, 2)
-                # Congestion causes slight packet drop, but link is still up
-                loss_pct = round(self.rng.uniform(1.0, 3.5), 3)
-
+                latency_ms = round(base_latency * 5.0 * cong_mult_jitter, 2)
+                loss_pct = cong_loss_jitter
             elif fault and fault["kind"] == "flapping":
                 # Flapping: link alternates up/down per tick
-                # Odd step: down (100% loss); Even step: up (normal latency & loss)
                 if self.step_count % 2 == 1:
                     status = "down"
                     loss_pct = 100.0
                     latency_ms = 0.0
                 else:
                     status = "up"
-                    loss_pct = round(self.rng.uniform(0.0, 0.2), 3)
-                    latency_ms = round(base_latency * self.rng.uniform(0.95, 1.05), 2)
-
+                    loss_pct = base_loss_jitter
+                    latency_ms = round(base_latency * base_latency_jitter, 2)
             else:
                 # Healthy link baseline: ~5ms core, ~15ms dist, ~30ms access
                 status = data.get("status", "up")
-                latency_ms = round(base_latency * self.rng.uniform(0.95, 1.05), 2)
-                loss_pct = round(self.rng.uniform(0.0, 0.25), 3)
+                latency_ms = round(base_latency * base_latency_jitter, 2)
+                loss_pct = base_loss_jitter
 
             measurements.append(
                 {

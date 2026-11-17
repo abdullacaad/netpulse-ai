@@ -1,6 +1,6 @@
 """Automated test suite for NetPulse AI network simulator and topology."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import sys
 import networkx as nx
@@ -189,8 +189,9 @@ def test_simulator_tick_advances_step():
 
 def test_simulator_reproducible_seed():
     """Verify two Simulator instances with identical seeds produce identical measurements."""
-    sim1 = Simulator(seed=42)
-    sim2 = Simulator(seed=42)
+    base_time = "2026-11-18T00:00:00Z"
+    sim1 = Simulator(seed=42, base_time=base_time)
+    sim2 = Simulator(seed=42, base_time=base_time)
 
     # Initial measurements before tick
     assert sim1.get_measurements() == sim2.get_measurements()
@@ -200,6 +201,31 @@ def test_simulator_reproducible_seed():
         m1 = sim1.tick()
         m2 = sim2.tick()
         assert m1 == m2, f"Mismatch at step {step + 1} with seed=42"
+
+
+def test_simulator_default_base_time_is_utc_now():
+    """Verify Simulator defaults base_time to current UTC time."""
+    before = datetime.now(timezone.utc)
+    sim = Simulator(seed=42)
+    after = datetime.now(timezone.utc)
+
+    sim_dt = datetime.fromisoformat(sim.current_timestamp)
+    assert before <= sim_dt <= after
+
+
+def test_get_measurements_returns_copies():
+    """Verify get_measurements returns a copy, not the internal shared list or mutable dicts."""
+    sim = Simulator(seed=42)
+    m1 = sim.get_measurements()
+    m2 = sim.get_measurements()
+
+    assert m1 is not m2
+    assert m1[0] is not m2[0]
+
+    # Mutating returned copy must not mutate internal cached measurements
+    m1[0]["status"] = "mutated_status"
+    m3 = sim.get_measurements()
+    assert m3[0]["status"] != "mutated_status"
 
 
 def test_simulator_different_seeds_produce_varied_noise():
@@ -285,6 +311,80 @@ def test_fault_node_down():
     dist2_m1 = next(m for m in m1 if m["target_id"] == "dist_2")
     assert dist2_m1["status"] == "up"
     assert dist2_m1["loss_pct"] < 0.5
+
+
+def test_node_down_takes_attached_links_down_and_unattached_stay_up():
+    """Verify attached links go down (100% loss, down) on node_down, and unattached links stay up."""
+    sim = Simulator(seed=42)
+
+    # dist_1 is attached to core_1-dist_1, dist_1-access_1, dist_1-access_2
+    sim.inject_fault("node_down", "dist_1", duration=2)
+    m = sim.tick()
+
+    # Check dist_1 node is down
+    node_m = next(x for x in m if x["target_id"] == "dist_1")
+    assert node_m["status"] == "down"
+    assert node_m["loss_pct"] == 100.0
+
+    # Attached links must be down with 100% loss and 0.0 latency
+    attached_link_ids = {"core_1-dist_1", "dist_1-access_1", "dist_1-access_2"}
+    for link_id in attached_link_ids:
+        link_m = next(x for x in m if x["target_id"] == link_id)
+        assert link_m["status"] == "down", f"Attached link {link_id} should be down"
+        assert link_m["loss_pct"] == 100.0, f"Attached link {link_id} should have 100% loss"
+        assert link_m["latency_ms"] == 0.0
+
+    # Unattached links must stay up with normal baseline loss
+    unattached_link_ids = {"core_1-core_2", "core_2-dist_3", "dist_2-access_3"}
+    for link_id in unattached_link_ids:
+        link_m = next(x for x in m if x["target_id"] == link_id)
+        assert link_m["status"] == "up", f"Unattached link {link_id} should be up"
+        assert link_m["loss_pct"] < 0.5, f"Unattached link {link_id} should have normal loss"
+
+
+def test_node_down_overrides_congestion_on_attached_link_and_recovers_on_expiry():
+    """Verify node_down overrides a congestion fault on an attached link and recovers when node_down expires."""
+    sim = Simulator(seed=42)
+
+    # Congestion on core_1-dist_1 for 4 ticks
+    sim.inject_fault("congestion", ("core_1", "dist_1"), duration=4)
+    # node_down on dist_1 for 2 ticks
+    sim.inject_fault("node_down", "dist_1", duration=2)
+
+    # Tick 1: node is down, attached link must be down (overriding congestion)
+    m1 = sim.tick()
+    link1 = next(x for x in m1 if x["target_id"] == "core_1-dist_1")
+    assert link1["status"] == "down"
+    assert link1["loss_pct"] == 100.0
+    assert link1["latency_ms"] == 0.0
+
+    # Tick 2: still down
+    m2 = sim.tick()
+    link2 = next(x for x in m2 if x["target_id"] == "core_1-dist_1")
+    assert link2["status"] == "down"
+    assert link2["loss_pct"] == 100.0
+
+    # Tick 3: node_down expired (duration=2 completed), congestion still active (tick 3 of 4)
+    m3 = sim.tick()
+    dist_node_3 = next(x for x in m3 if x["target_id"] == "dist_1")
+    link3 = next(x for x in m3 if x["target_id"] == "core_1-dist_1")
+    assert dist_node_3["status"] == "up"
+    assert link3["status"] == "up"
+    assert link3["latency_ms"] == pytest.approx(75.0, abs=10.0)  # ~5x 15ms baseline
+    assert link3["loss_pct"] > 0.5
+
+    # Tick 4: congestion tick 4 of 4
+    m4 = sim.tick()
+    link4 = next(x for x in m4 if x["target_id"] == "core_1-dist_1")
+    assert link4["status"] == "up"
+    assert link4["latency_ms"] > 60.0
+
+    # Tick 5: congestion expired, fully restored to healthy baseline
+    m5 = sim.tick()
+    link5 = next(x for x in m5 if x["target_id"] == "core_1-dist_1")
+    assert link5["status"] == "up"
+    assert link5["latency_ms"] == pytest.approx(15.0, abs=2.0)
+    assert link5["loss_pct"] < 0.5
 
 
 def test_fault_clear_node_down():
@@ -420,3 +520,55 @@ def test_invalid_fault_inputs_raise_errors():
     # non-positive duration
     with pytest.raises(ValueError, match="duration must be a positive integer"):
         sim.inject_fault("congestion", ("core_1", "dist_1"), duration=0)
+
+
+def test_fault_does_not_shift_unrelated_target_jitter():
+    """Verify drawing RNG jitter unconditionally prevents a fault from shifting noise of other targets."""
+    base_time = "2026-11-18T00:00:00Z"
+    sim_clean = Simulator(seed=42, base_time=base_time)
+    sim_faulty = Simulator(seed=42, base_time=base_time)
+
+    # Inject fault on dist_1 in sim_faulty only
+    sim_faulty.inject_fault("node_down", "dist_1")
+
+    m_clean = sim_clean.tick()
+    m_faulty = sim_faulty.tick()
+
+    # Compare an unrelated target: core_2 node and core_2-dist_3 link
+    clean_node = next(x for x in m_clean if x["target_id"] == "core_2")
+    faulty_node = next(x for x in m_faulty if x["target_id"] == "core_2")
+    assert clean_node["latency_ms"] == faulty_node["latency_ms"]
+    assert clean_node["loss_pct"] == faulty_node["loss_pct"]
+
+    clean_link = next(x for x in m_clean if x["target_id"] == "core_2-dist_3")
+    faulty_link = next(x for x in m_faulty if x["target_id"] == "core_2-dist_3")
+    assert clean_link["latency_ms"] == faulty_link["latency_ms"]
+    assert clean_link["loss_pct"] == faulty_link["loss_pct"]
+
+
+def test_duration_strict_validation():
+    """Verify duration must be an int, rejecting bool, float, NaN, and non-positive numbers."""
+    sim = Simulator(seed=42)
+
+    with pytest.raises(TypeError, match="duration must be an integer"):
+        sim.inject_fault("congestion", ("core_1", "dist_1"), duration=True)
+
+    with pytest.raises(TypeError, match="duration must be an integer"):
+        sim.inject_fault("congestion", ("core_1", "dist_1"), duration=float("nan"))
+
+    with pytest.raises(TypeError, match="duration must be an integer"):
+        sim.inject_fault("congestion", ("core_1", "dist_1"), duration=2.5)
+
+    with pytest.raises(ValueError, match="duration must be a positive integer"):
+        sim.inject_fault("congestion", ("core_1", "dist_1"), duration=0)
+
+    with pytest.raises(ValueError, match="duration must be a positive integer"):
+        sim.inject_fault("congestion", ("core_1", "dist_1"), duration=-5)
+
+
+def test_clear_fault_unhashable_target_returns_false():
+    """Verify clear_fault returns False without raising TypeError for unhashable targets."""
+    sim = Simulator(seed=42)
+    assert sim.clear_fault(["core_1", "dist_1"]) is False
+    assert sim.clear_fault({"invalid": "target"}) is False
+
