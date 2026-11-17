@@ -2,6 +2,18 @@
 
 Record of what was done, when, and by whom. Newest entries at the top.
 
+## 2026-11-18 — Telemetry collector and SQLite storage layer (Issue #5)
+
+- Branch: `feature/collector` created from `main`.
+- Implemented `database/db.py`: SQLite storage layer with `measurements` table (id, timestamp, target_type, target_id, latency_ms, loss_pct, status) and indexes on `(target_id, timestamp, target_type)` (unique constraint for idempotency) and `(timestamp)`. Provides `init_db(path)`, `insert_measurements(rows, path)`, `query_measurements(target_id, start, end, path)`, and `get_connection(path)`.
+- Applied PR #9 review fixes: single connection per operation with `_open()` in WAL mode; UTC timestamp normalisation (`_to_utc_iso`); idempotent inserts (`INSERT OR IGNORE`) returning rows actually inserted; rejection of `:memory:` paths with ValueError; strict validation of `poll_interval` (> 0 and finite); prompt loop termination using `threading.Event`; documented polling contract; step_interval_seconds=1 in demo; updated `.gitignore` with WAL/SHM/journal patterns.
+- Implemented `monitoring/collector.py`: `Collector` class taking a simulator instance, poll interval (default 5s), and database path. Implements `collect_once()` with error-logging resilience, and `run(duration_seconds)` with prompt interruption via `stop()`.
+- Created package exports in `database/__init__.py` and `monitoring/__init__.py`.
+- Created automated test suites:
+  - `tests/test_db.py` (12 tests covering table creation, WAL mode, unique index, idempotent duplicate batch insertion, UTC timestamp normalisation, target_id and timestamp filtering, ordering, directory creation, `:memory:` rejection).
+  - `tests/test_collector.py` (11 tests covering round-trip storage, history accumulation, fault recording in SQLite, error logging on simulator failure, get-only simulator idempotency, invalid poll interval rejection, prompt sleep interruption via threading.Event, and intermittent failure resilience).
+- All 49 tests passing (`pytest`). Pushed to `feature/collector`.
+
 ## 2026-11-18 — Network simulator implementation (Issue #7)
 
 - Branch: `feature/simulator` created from `main`.
