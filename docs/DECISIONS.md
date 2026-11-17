@@ -41,3 +41,17 @@ Decisions are recorded with date, context and status. Reversed decisions stay he
 **Decision:** When a node goes down (`node_down`), attached links report down (status "down", 100% loss, 0.0 latency), but cascading failure propagation to downstream nodes (nodes and links further down the tree behind the failure) is deferred. The simulator reports localized link and node status; full downstream reachability modeling will be decided before the Week 5–6 root-cause diagnosis work.
 
 **Why:** Keeps the Week 1–2 simulator interface clean, fast, and focused on direct fault injection without prematurely coupling simulator logic to path-walking routing logic.
+
+## 2026-11-18 — Telemetry collector owns simulation clock and timestamp semantics
+
+**Decision:** The telemetry collector owns the simulation clock when running against a `Simulator` instance. Stored timestamps represent simulation time. If a source only implements `get_measurements()`, it or the caller must advance time itself. A second consumer must not call `tick()` concurrently as that would double-advance the simulation clock.
+
+**Why:** Keeps time advancement linear and coordinated through the primary ingest pipeline without race conditions or conflicting step increments.
+
+## 2026-11-18 — Telemetry storage limitations and retention deferral
+
+**Decision:** Telemetry history is appended into SQLite with no automatic pruning or retention policy for the initial MVP foundation. `query_measurements` currently operates without a `LIMIT` clause.
+
+**Context & Limitations:**
+- At default 5-second polling intervals across 59 targets (30 nodes + 29 links), the collector writes ~1,019,520 rows (~189 MB) per day.
+- A rolling retention window (e.g. 7-day or 30-day purge) and query pagination/limits will be introduced in Week 3–4 when monitoring thresholds and dashboard queries are integrated.

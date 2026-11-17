@@ -17,6 +17,9 @@ env/
 # Databases (generated locally)
 *.db
 *.sqlite3
+*.db-wal
+*.db-shm
+*.db-journal
 
 # Distribution / packaging
 build/

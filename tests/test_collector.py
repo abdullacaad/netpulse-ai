@@ -2,6 +2,7 @@
 
 import logging
 from pathlib import Path
+import threading
 import time
 import pytest
 
@@ -27,6 +28,26 @@ def test_collector_init(temp_db: Path):
     assert temp_db.exists()
 
 
+def test_collector_invalid_poll_interval_raises_value_error(temp_db: Path):
+    """Verify collector rejects non-positive or non-finite poll_interval with ValueError."""
+    sim = Simulator(seed=42)
+
+    with pytest.raises(ValueError, match="positive finite number"):
+        Collector(simulator=sim, poll_interval=0, db_path=temp_db)
+
+    with pytest.raises(ValueError, match="positive finite number"):
+        Collector(simulator=sim, poll_interval=-1, db_path=temp_db)
+
+    with pytest.raises(ValueError, match="positive finite number"):
+        Collector(simulator=sim, poll_interval=float("nan"), db_path=temp_db)
+
+    with pytest.raises(ValueError, match="positive finite number"):
+        Collector(simulator=sim, poll_interval=float("inf"), db_path=temp_db)
+
+    with pytest.raises(ValueError, match="positive finite number"):
+        Collector(simulator=sim, poll_interval="invalid", db_path=temp_db)
+
+
 def test_collect_once_stores_simulator_measurements(temp_db: Path):
     """Verify collect_once polls simulator and writes all measurements to DB."""
     sim = Simulator(seed=42, base_time="2026-11-18T00:00:00Z")
@@ -50,6 +71,36 @@ def test_collect_once_stores_simulator_measurements(temp_db: Path):
         assert s["status"] == row["status"]
         assert s["latency_ms"] == pytest.approx(row["latency_ms"])
         assert s["loss_pct"] == pytest.approx(row["loss_pct"])
+
+
+def test_get_only_simulator_polled_twice_no_duplicate_rows(temp_db: Path):
+    """Verify a get-only simulator (without tick()) polled twice does not duplicate rows."""
+    class GetOnlySimulator:
+        def get_measurements(self):
+            return [
+                {
+                    "timestamp": "2026-11-18T01:00:00+00:00",
+                    "target_type": "node",
+                    "target_id": "core_1",
+                    "latency_ms": 1.0,
+                    "loss_pct": 0.0,
+                    "status": "up",
+                }
+            ]
+
+    collector = Collector(simulator=GetOnlySimulator(), poll_interval=1.0, db_path=temp_db)
+
+    # First poll inserts 1 row
+    first_rows = collector.collect_once()
+    assert len(first_rows) == 1
+    stored_after_first = query_measurements(path=temp_db)
+    assert len(stored_after_first) == 1
+
+    # Second poll generates identical timestamp & target -> ignored by unique index
+    second_rows = collector.collect_once()
+    assert len(second_rows) == 1
+    stored_after_second = query_measurements(path=temp_db)
+    assert len(stored_after_second) == 1  # No duplicate rows created!
 
 
 def test_collect_once_accumulates_history(temp_db: Path):
@@ -138,7 +189,7 @@ def test_collector_run_loops_for_fixed_duration(temp_db: Path):
 
 
 def test_collector_stop_terminates_run(temp_db: Path):
-    """Verify stop() method terminates run() loop early."""
+    """Verify stop() method terminates run() loop early when signaled before start."""
     sim = Simulator(seed=42)
     collector = Collector(simulator=sim, poll_interval=0.05, db_path=temp_db)
 
@@ -146,6 +197,29 @@ def test_collector_stop_terminates_run(temp_db: Path):
     collector.stop()
     polls = collector.run(duration_seconds=5.0)
     assert polls == 0
+
+
+def test_collector_run_returns_promptly_when_stopped_during_sleep(temp_db: Path):
+    """Verify run() wakes up promptly on stop() mid-sleep instead of waiting out poll_interval."""
+    sim = Simulator(seed=42)
+    # Large poll_interval (5 seconds)
+    collector = Collector(simulator=sim, poll_interval=5.0, db_path=temp_db)
+
+    # Run in a background thread for a long duration
+    thread = threading.Thread(target=lambda: collector.run(duration_seconds=30.0))
+    thread.start()
+
+    # Allow it to run the first poll and enter sleep
+    time.sleep(0.1)
+
+    # Signal stop mid-sleep
+    stop_start = time.monotonic()
+    collector.stop()
+    thread.join(timeout=1.5)
+    stop_elapsed = time.monotonic() - stop_start
+
+    assert not thread.is_alive(), "Collector thread should have terminated promptly"
+    assert stop_elapsed < 1.0, f"Collector took {stop_elapsed}s to stop, expected < 1.0s"
 
 
 def test_collector_run_resilient_to_intermittent_error(temp_db: Path, caplog: pytest.LogCaptureFixture):

@@ -10,9 +10,9 @@ Updated whenever work is transferred between assistants. Each entry states what 
 
 ## 2026-11-18 — Telemetry collector and SQLite storage layer (Antigravity → Maintainer / Claude)
 
-- **Implemented, awaiting review:** Implemented GitHub issue #5 (telemetry collector) on branch `feature/collector` (branched from `main`). Created `database/db.py`, `database/__init__.py`, `monitoring/collector.py`, `monitoring/__init__.py`, `tests/test_db.py`, and `tests/test_collector.py`.
-- **Verified:** 43/43 pytest tests passing (`pytest`). Database schema and round-trip verified (indexes, insertion, query by target and time range). Collector verified polling simulator, storing measurements, recording injected faults, handling poll errors gracefully, and running for scheduled intervals.
-- **Status:** Branch is local (`feature/collector`) and unpushed per maintainer instructions. Awaiting review.
+- **Implemented, awaiting review:** Implemented GitHub issue #5 (telemetry collector) on branch `feature/collector` (branched from `main`). Created `database/db.py`, `database/__init__.py`, `monitoring/collector.py`, `monitoring/__init__.py`, `tests/test_db.py`, and `tests/test_collector.py`. Applied PR #9 review fixes: WAL mode with `_open()`, UTC timestamp normalisation, idempotent `INSERT OR IGNORE` with unique index, `:memory:` rejection, strict `poll_interval` validation, and `threading.Event` sleep cancellation.
+- **Verified:** 49/49 pytest tests passing (`pytest`). Database schema and round-trip verified (WAL mode, unique index, idempotent duplicate batch insertion, query by target and time range, UTC normalisation). Collector verified polling simulator, storing measurements, recording injected faults, handling poll errors gracefully, and running for scheduled intervals with prompt stop.
+- **Status:** Branch `feature/collector` pushed to `origin/feature/collector`. Awaiting review.
 - **Next:** Maintainer review and Claude independent code review.
 
 ## 2026-11-18 — Network simulator implementation (Antigravity → Maintainer / Claude)

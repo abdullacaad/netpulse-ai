@@ -21,11 +21,15 @@ def temp_db(tmp_path: Path) -> Path:
 
 
 def test_init_db_creates_table_and_indexes(temp_db: Path):
-    """Verify init_db creates measurements table and index structures."""
+    """Verify init_db creates measurements table and index structures in WAL mode."""
     init_db(temp_db)
     conn = get_connection(temp_db)
     try:
         cursor = conn.cursor()
+        # Verify WAL mode
+        cursor.execute("PRAGMA journal_mode")
+        assert cursor.fetchone()[0].lower() == "wal"
+
         # Verify table existence
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='measurements'")
         assert cursor.fetchone() is not None
@@ -46,7 +50,7 @@ def test_init_db_creates_table_and_indexes(temp_db: Path):
             assert col in columns
             assert columns[col] == col_type
 
-        # Verify indexes
+        # Verify indexes (including unique index on target_id, timestamp, target_type)
         cursor.execute("SELECT name FROM sqlite_master WHERE type='index'")
         index_names = {row["name"] for row in cursor.fetchall()}
         assert "idx_measurements_target_time" in index_names
@@ -101,6 +105,63 @@ def test_insert_and_query_measurements_round_trip(temp_db: Path):
     assert r1["id"] == 2
     assert r1["target_type"] == "link"
     assert r1["target_id"] == "core_1-dist_1"
+
+
+def test_insert_idempotent_duplicate_batch_stored_once(temp_db: Path):
+    """Verify inserting the exact same batch twice stores it once and returns 0 on duplicate."""
+    sample_rows = [
+        {
+            "timestamp": "2026-11-18T01:00:00Z",
+            "target_type": "node",
+            "target_id": "core_1",
+            "latency_ms": 1.05,
+            "loss_pct": 0.0,
+            "status": "up",
+        },
+        {
+            "timestamp": "2026-11-18T01:00:00Z",
+            "target_type": "link",
+            "target_id": "core_1-dist_1",
+            "latency_ms": 15.2,
+            "loss_pct": 0.1,
+            "status": "up",
+        },
+    ]
+
+    # First insert stores 2 rows
+    inserted_first = insert_measurements(sample_rows, temp_db)
+    assert inserted_first == 2
+
+    # Second insert of identical batch is ignored (idempotent)
+    inserted_second = insert_measurements(sample_rows, temp_db)
+    assert inserted_second == 0
+
+    # Total rows in DB remain 2
+    all_rows = query_measurements(path=temp_db)
+    assert len(all_rows) == 2
+
+
+def test_timestamp_normalization_to_utc_iso(temp_db: Path):
+    """Verify naive, Z-suffix, and offset timestamps are all normalised to UTC ISO strings."""
+    rows = [
+        # Naive string -> treated as UTC
+        {"timestamp": "2026-11-18T01:00:00", "target_type": "node", "target_id": "n1", "latency_ms": 1.0, "loss_pct": 0.0, "status": "up"},
+        # Z suffix -> normalised to +00:00
+        {"timestamp": "2026-11-18T02:00:00Z", "target_type": "node", "target_id": "n2", "latency_ms": 1.0, "loss_pct": 0.0, "status": "up"},
+        # Offset +05:00 (07:00:00+05:00 == 02:00:00 UTC, but different node)
+        {"timestamp": "2026-11-18T07:00:00+05:00", "target_type": "node", "target_id": "n3", "latency_ms": 1.0, "loss_pct": 0.0, "status": "up"},
+    ]
+    insert_measurements(rows, temp_db)
+
+    results = query_measurements(path=temp_db)
+    assert len(results) == 3
+    assert results[0]["timestamp"] == "2026-11-18T01:00:00+00:00"
+    assert results[1]["timestamp"] == "2026-11-18T02:00:00+00:00"
+    assert results[2]["timestamp"] == "2026-11-18T02:00:00+00:00"
+
+    # Query with naive bounds matches normalised UTC
+    res_naive = query_measurements(start="2026-11-18T01:30:00", path=temp_db)
+    assert len(res_naive) == 2
 
 
 def test_query_filter_by_target_id(temp_db: Path):
@@ -210,3 +271,9 @@ def test_auto_creates_parent_directory(tmp_path: Path):
 
     init_db(deep_path)
     assert deep_path.exists()
+
+
+def test_reject_memory_path():
+    """Verify get_connection rejects ':memory:' with a clear ValueError."""
+    with pytest.raises(ValueError, match="In-memory SQLite databases"):
+        get_connection(":memory:")

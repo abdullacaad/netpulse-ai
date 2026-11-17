@@ -4,7 +4,7 @@ Provides unified database access for telemetry measurements.
 No other module should write SQL directly.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import sqlite3
 from typing import Any, Dict, List, Optional, Union
@@ -22,8 +22,8 @@ CREATE TABLE IF NOT EXISTS measurements (
     status TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_measurements_target_time 
-    ON measurements (target_id, timestamp);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_measurements_target_time 
+    ON measurements (target_id, timestamp, target_type);
 
 CREATE INDEX IF NOT EXISTS idx_measurements_timestamp 
     ON measurements (timestamp);
@@ -37,33 +37,47 @@ def _resolve_path(path: Optional[Union[str, Path]] = None) -> Union[str, Path]:
     return path
 
 
+def _to_utc_iso(v: Union[str, datetime]) -> str:
+    """Normalise timestamp string or datetime object to UTC ISO-8601 string.
+
+    Naive timestamps are treated as UTC.
+    """
+    if isinstance(v, str):
+        v = datetime.fromisoformat(v.replace("Z", "+00:00"))
+    if v.tzinfo is None:
+        v = v.replace(tzinfo=timezone.utc)
+    return v.astimezone(timezone.utc).isoformat()
+
+
 def get_connection(path: Optional[Union[str, Path]] = None) -> sqlite3.Connection:
     """Open and return a SQLite connection with Row factory configured.
 
     Automatically creates parent directory if necessary.
+    In-memory databases (':memory:') are not supported and raise ValueError.
     """
     resolved = _resolve_path(path)
-    if isinstance(resolved, Path) or (
-        isinstance(resolved, str) and resolved != ":memory:"
-    ):
-        p = Path(resolved)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(p))
-    else:
-        conn = sqlite3.connect(str(resolved))
+    if resolved == ":memory:":
+        raise ValueError("In-memory SQLite databases (':memory:') are not supported; use a file path.")
 
+    p = Path(resolved)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(p))
     conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _open(path: Optional[Union[str, Path]] = None) -> sqlite3.Connection:
+    """Open a SQLite connection in WAL mode and ensure schema is initialized."""
+    conn = get_connection(path)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.executescript(SCHEMA_SQL)
     return conn
 
 
 def init_db(path: Optional[Union[str, Path]] = None) -> None:
     """Initialize SQLite database schema and indexes."""
-    conn = get_connection(path)
-    try:
-        with conn:
-            conn.executescript(SCHEMA_SQL)
-    finally:
-        conn.close()
+    conn = _open(path)
+    conn.close()
 
 
 def insert_measurements(
@@ -72,21 +86,23 @@ def insert_measurements(
 ) -> int:
     """Insert telemetry measurement rows into the database.
 
+    Inserts are idempotent using INSERT OR IGNORE based on unique constraint
+    (target_id, timestamp, target_type).
+
     Args:
         rows: List of dicts with keys:
               timestamp, target_type, target_id, latency_ms, loss_pct, status.
         path: Optional database path. Defaults to DEFAULT_DB_PATH.
 
     Returns:
-        Number of rows inserted.
+        Number of rows actually inserted.
     """
     if not rows:
         return 0
 
-    init_db(path)
-    conn = get_connection(path)
+    conn = _open(path)
     insert_sql = """
-    INSERT INTO measurements (
+    INSERT OR IGNORE INTO measurements (
         timestamp, target_type, target_id, latency_ms, loss_pct, status
     ) VALUES (
         :timestamp, :target_type, :target_id, :latency_ms, :loss_pct, :status
@@ -94,24 +110,20 @@ def insert_measurements(
     """
     try:
         with conn:
-            # Prepare rows, ensuring timestamp is string format
-            prepared = []
-            for r in rows:
-                ts = r["timestamp"]
-                if isinstance(ts, datetime):
-                    ts = ts.isoformat()
-                prepared.append(
-                    {
-                        "timestamp": str(ts),
-                        "target_type": str(r["target_type"]),
-                        "target_id": str(r["target_id"]),
-                        "latency_ms": r.get("latency_ms"),
-                        "loss_pct": r.get("loss_pct"),
-                        "status": str(r["status"]),
-                    }
-                )
-            cursor = conn.executemany(insert_sql, prepared)
-            return cursor.rowcount
+            before = conn.total_changes
+            prepared = [
+                {
+                    "timestamp": _to_utc_iso(r["timestamp"]),
+                    "target_type": str(r["target_type"]),
+                    "target_id": str(r["target_id"]),
+                    "latency_ms": r.get("latency_ms"),
+                    "loss_pct": r.get("loss_pct"),
+                    "status": str(r["status"]),
+                }
+                for r in rows
+            ]
+            conn.executemany(insert_sql, prepared)
+            return conn.total_changes - before
     finally:
         conn.close()
 
@@ -133,9 +145,7 @@ def query_measurements(
     Returns:
         List of measurement dicts ordered by timestamp ASC, id ASC.
     """
-    init_db(path)
-    conn = get_connection(path)
-
+    conn = _open(path)
     query = ["SELECT id, timestamp, target_type, target_id, latency_ms, loss_pct, status FROM measurements"]
     conditions = []
     params: List[Any] = []
@@ -145,14 +155,12 @@ def query_measurements(
         params.append(str(target_id))
 
     if start is not None:
-        start_str = start.isoformat() if isinstance(start, datetime) else str(start)
         conditions.append("timestamp >= ?")
-        params.append(start_str)
+        params.append(_to_utc_iso(start))
 
     if end is not None:
-        end_str = end.isoformat() if isinstance(end, datetime) else str(end)
         conditions.append("timestamp <= ?")
-        params.append(end_str)
+        params.append(_to_utc_iso(end))
 
     if conditions:
         query.append("WHERE " + " AND ".join(conditions))
