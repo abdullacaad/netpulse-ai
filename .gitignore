@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+
+# Secrets and local config
+.env
+*.env
+.streamlit/secrets.toml
+
+# Databases (generated locally)
+*.db
+*.sqlite3
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
