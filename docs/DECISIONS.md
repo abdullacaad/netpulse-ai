@@ -48,10 +48,16 @@ Decisions are recorded with date, context and status. Reversed decisions stay he
 
 **Why:** Keeps time advancement linear and coordinated through the primary ingest pipeline without race conditions or conflicting step increments.
 
-## 2026-11-18 — Telemetry storage limitations and retention deferral
+## 2026-11-18 — Telemetry storage limitations and query pagination
 
-**Decision:** Telemetry history is appended into SQLite with no automatic pruning or retention policy for the initial MVP foundation. `query_measurements` currently operates without a `LIMIT` clause.
+**Decision:** Telemetry history is appended into SQLite with no automatic pruning or retention policy for the initial MVP foundation. `query_measurements` supports `order` ("ASC" | "DESC") and `limit` parameters to allow windowed reads for monitoring and dashboard queries. A rolling retention window (e.g. 7-day or 30-day purge) remains deferred.
 
 **Context & Limitations:**
 - At default 5-second polling intervals across 59 targets (30 nodes + 29 links), the collector writes ~1,019,520 rows (~189 MB) per day.
-- A rolling retention window (e.g. 7-day or 30-day purge) and query pagination/limits will be introduced in Week 3–4 when monitoring thresholds and dashboard queries are integrated.
+- Monitoring and dashboard consumers should use `order="DESC"` and `limit=N` when retrieving recent telemetry rather than scanning full historical tables.
+
+## 2026-11-18 — Tiered threshold rules and rolling trend architecture
+
+**Decision:** Threshold monitoring evaluates telemetry against network tier baselines (`core`, `distribution`, `access`, `customer`, `node`) with two severity tiers (`WARNING` and `CRITICAL`). Directional trends (`rising`, `falling`, `stable`) are calculated using a rolling window of recent measurements per target by comparing early vs. late half-window averages against relative and absolute deltas.
+
+**Why:** Fixed single-value thresholds across all links produce false positives (e.g. 30ms is normal for customer links but critical for core links). Directional trends give operators early warning before hard critical breaches occur and power the Streamlit dashboard without heavy ML dependencies in Week 3.

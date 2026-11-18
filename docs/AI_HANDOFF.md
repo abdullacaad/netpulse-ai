@@ -8,6 +8,23 @@ Updated whenever work is transferred between assistants. Each entry states what 
 - The assistant starting work reads the latest entry plus `docs/PROJECT_CONTEXT.md` first.
 - State facts only: file paths, test results, open questions. Never claim work is complete unless it is implemented, tested and merged.
 
+## 2026-11-18 — Latency and packet-loss monitoring (thresholds and trends) (Antigravity → Maintainer / Claude)
+
+- **Implemented, awaiting review:** Implemented GitHub issue #3 (latency and packet-loss monitoring with thresholds and trends) on branch `feature/monitoring` (branched from `main`).
+  - Created `monitoring/rules.py`: tier-aware thresholds (`ThresholdConfig`), `Breach` dataclass, `get_target_tier()`, and `evaluate_measurement()`.
+  - Created `monitoring/trends.py`: `RollingTrendTracker` tracking rolling window metrics (min/max/avg) and directional trends (`rising`, `falling`, `stable`).
+  - Created `monitoring/monitor.py`: `NetworkMonitor` integrating rules, trends, database querying (`load_from_db`, `from_db`), and dashboard status methods (`get_target_status`, `get_network_status`, `get_breaching_targets`).
+  - Updated `database/db.py`: added `order` and `limit` support to `query_measurements()`.
+  - Updated `monitoring/__init__.py`: exported monitoring components with lazy loading.
+  - Created `tests/test_monitoring.py` and updated `tests/test_db.py`.
+- **Verified:**
+  - 67/67 pytest tests passing (`pytest`).
+  - Acceptance criterion verified: injected fault pushing link over latency threshold registers as breaching (`is_breaching: True`, `health: CRITICAL`), with recent rolling trend visible (`latency_trend: rising`, historical points exposed).
+  - Standalone demo verified via `python -m monitoring.monitor`.
+- **Status:** Branch `feature/monitoring` pushed to `origin/feature/monitoring`. Awaiting review.
+- **Next:** Maintainer review and Claude independent code review; PR creation for Issue #3.
+
+
 ## 2026-11-18 — Telemetry collector and SQLite storage layer (Antigravity → Maintainer / Claude)
 
 - **Implemented, awaiting review:** Implemented GitHub issue #5 (telemetry collector) on branch `feature/collector` (branched from `main`). Created `database/db.py`, `database/__init__.py`, `monitoring/collector.py`, `monitoring/__init__.py`, `tests/test_db.py`, and `tests/test_collector.py`. Applied PR #9 review fixes: WAL mode with `_open()`, UTC timestamp normalisation, idempotent `INSERT OR IGNORE` with unique index, `:memory:` rejection, strict `poll_interval` validation, and `threading.Event` sleep cancellation.

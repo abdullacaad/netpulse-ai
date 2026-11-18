@@ -133,17 +133,21 @@ def query_measurements(
     start: Optional[Union[str, datetime]] = None,
     end: Optional[Union[str, datetime]] = None,
     path: Optional[Union[str, Path]] = None,
+    order: str = "ASC",
+    limit: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
-    """Query telemetry measurements with optional target_id and timestamp filtering.
+    """Query telemetry measurements with optional target_id, timestamp filtering, ordering, and limit.
 
     Args:
         target_id: Filter by target identifier (node or link ID).
         start: Earliest timestamp (inclusive), as ISO string or datetime.
         end: Latest timestamp (inclusive), as ISO string or datetime.
         path: Optional database path. Defaults to DEFAULT_DB_PATH.
+        order: Sort order by timestamp ('ASC' or 'DESC'). Default 'ASC'.
+        limit: Optional maximum number of rows to return.
 
     Returns:
-        List of measurement dicts ordered by timestamp ASC, id ASC.
+        List of measurement dicts ordered by timestamp, id.
     """
     conn = _open(path)
     query = ["SELECT id, timestamp, target_type, target_id, latency_ms, loss_pct, status FROM measurements"]
@@ -165,7 +169,13 @@ def query_measurements(
     if conditions:
         query.append("WHERE " + " AND ".join(conditions))
 
-    query.append("ORDER BY timestamp ASC, id ASC")
+    sort_order = "DESC" if str(order).strip().upper() == "DESC" else "ASC"
+    query.append(f"ORDER BY timestamp {sort_order}, id {sort_order}")
+
+    if limit is not None:
+        query.append("LIMIT ?")
+        params.append(int(limit))
+
     full_sql = " ".join(query)
 
     try:

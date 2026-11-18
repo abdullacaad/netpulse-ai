@@ -251,6 +251,25 @@ def test_query_ordering_is_chronological(temp_db: Path):
     assert [r["target_id"] for r in res] == ["B", "C", "A"]
 
 
+def test_query_order_and_limit(temp_db: Path):
+    """Verify query_measurements supports order='DESC' and limit."""
+    rows = [
+        {"timestamp": f"2026-11-18T01:00:{i:02d}Z", "target_type": "node", "target_id": "core_1", "latency_ms": float(i), "loss_pct": 0.0, "status": "up"}
+        for i in range(10)
+    ]
+    insert_measurements(rows, temp_db)
+
+    # Limit only (ASC)
+    res_limit = query_measurements(target_id="core_1", limit=3, path=temp_db)
+    assert len(res_limit) == 3
+    assert [r["latency_ms"] for r in res_limit] == [0.0, 1.0, 2.0]
+
+    # Limit and DESC order
+    res_desc = query_measurements(target_id="core_1", order="DESC", limit=3, path=temp_db)
+    assert len(res_desc) == 3
+    assert [r["latency_ms"] for r in res_desc] == [9.0, 8.0, 7.0]
+
+
 def test_insert_datetime_object_in_row(temp_db: Path):
     """Verify insert_measurements converts row datetime objects to ISO strings."""
     dt = datetime(2026, 11, 18, 2, 30, 0, tzinfo=timezone.utc)
