@@ -2,6 +2,23 @@
 
 Record of what was done, when, and by whom. Newest entries at the top.
 
+## 2026-11-18 — Network topology visualisation (Issue #4)
+
+- Branch: `feature/topology` created from `main`.
+- Implemented `dashboard/topology.py`:
+  - Deterministic hierarchical positions for core, distribution, access, and customer tiers.
+  - Interactive Plotly rendering of all 30 nodes and 29 NetworkX links.
+  - Node colors reflect `NetworkMonitor` health (`HEALTHY`, `WARNING`, `CRITICAL`, `UNKNOWN`).
+  - Link colors reflect current monitoring status and latency/packet-loss health; line width includes packet-loss severity.
+  - Node and link hover details expose status, health, latency, and packet loss.
+- Implemented `dashboard/app.py`:
+  - Streamlit dashboard entry point.
+  - Loads `NetworkMonitor` from SQLite with `from_db()`.
+  - Supports explicit SQLite refresh and one-tick live collection via `Collector`.
+- Updated `requirements.txt` with `plotly`.
+- Added `tests/test_dashboard.py` covering full topology counts, deterministic layout, monitor-driven node/link colors, down targets, and SQLite read-model loading.
+- Full test suite passing (83/83 tests across simulator, database, collector, monitoring, and dashboard).
+
 ## 2026-11-18 — Latency and packet-loss monitoring (thresholds and trends) (Issue #3)
 
 - Branch: `feature/monitoring` created from `main`.
