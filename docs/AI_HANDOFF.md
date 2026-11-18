@@ -12,11 +12,11 @@ Updated whenever work is transferred between assistants. Each entry states what 
 
 - **Implemented:** Interactive NetworkX topology dashboard on branch `feature/topology`.
   - Added `dashboard/topology.py` with deterministic hierarchical layout, Plotly hover interactions, and health-colored nodes and links.
-  - Added `dashboard/app.py` with SQLite `NetworkMonitor.from_db()` loading, explicit refresh, and live one-tick collection.
+  - Added `dashboard/app.py` with repo-root bootstrap and SQLite-only `NetworkMonitor.from_db()` loading.
   - Added `plotly` to `requirements.txt`.
-  - Added topology/dashboard tests for full 30-node/29-link rendering, layout, live health colors, down targets, and SQLite loading.
-- **Verified:** 83/83 pytest tests passing.
-- **Status:** Pushed to `origin/feature/topology`; awaiting maintainer review and PR creation.
+  - Added topology/dashboard tests for full 30-node/29-link rendering, natural layout, live health colors, no-data state, down targets, and SQLite loading.
+- **Verified:** 88/88 pytest tests passing after PR #11 review fixes.
+- **Status:** Pushed to `origin/feature/topology`; awaiting PR review. Do not merge the PR.
 
 ## 2026-11-18 — Latency and packet-loss monitoring (thresholds and trends) (Antigravity → Maintainer / Claude)
 

@@ -26,7 +26,7 @@
 - [x] Network simulator
 - [x] Telemetry collector
 - [x] Latency and packet-loss monitoring
-- [x] Network topology visualisation
+- [ ] Network topology visualisation
 - [ ] Anomaly detection
 - [ ] Root-cause diagnosis
 - [ ] Monitoring dashboard

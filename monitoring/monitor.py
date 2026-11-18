@@ -157,7 +157,9 @@ class NetworkMonitor:
 
             all_active_breaches.extend(state["breaches"])
 
-        if critical > 0:
+        if total == 0:
+            overall = "UNKNOWN"
+        elif critical > 0:
             overall = "CRITICAL"
         elif warning > 0:
             overall = "WARNING"

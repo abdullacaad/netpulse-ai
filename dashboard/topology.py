@@ -1,6 +1,7 @@
 """Interactive NetworkX topology visualization for the NetPulse dashboard."""
 
-from typing import Any, Dict, Iterable, Optional, Tuple
+import re
+from typing import Any, Dict, Optional, Tuple
 
 import networkx as nx
 import plotly.graph_objects as go
@@ -13,21 +14,12 @@ HEALTH_COLORS = {
     "UNKNOWN": "#adb5bd",
 }
 
-TIER_COLORS = {
-    "core": "#2563eb",
-    "distribution": "#7c3aed",
-    "access": "#0891b2",
-    "customer": "#64748b",
-}
-
-
 def canonical_link_id(u: str, v: str) -> str:
     """Return the simulator-style canonical link identifier."""
     return f"{u}-{v}"
 
 
 def get_link_status(
-    graph: nx.Graph,
     u: str,
     v: str,
     targets: Dict[str, Dict[str, Any]],
@@ -37,6 +29,15 @@ def get_link_status(
     if direct is not None:
         return direct
     return targets.get(canonical_link_id(v, u), {})
+
+
+def natural_sort_key(node_id: str) -> Tuple[Tuple[int, Any], ...]:
+    """Sort names containing numbers naturally, such as cust_2 before cust_10."""
+    return tuple(
+        (1, int(part)) if part.isdigit() else (0, part.lower())
+        for part in re.split(r"(\d+)", node_id)
+        if part
+    )
 
 
 def build_topology_positions(graph: nx.Graph) -> Dict[str, Tuple[float, float]]:
@@ -50,9 +51,12 @@ def build_topology_positions(graph: nx.Graph) -> Dict[str, Tuple[float, float]]:
     positions: Dict[str, Tuple[float, float]] = {}
     for tier in ("core", "distribution", "access", "customer"):
         nodes = sorted(
-            node_id
-            for node_id, attrs in graph.nodes(data=True)
-            if attrs.get("type") == tier
+            (
+                node_id
+                for node_id, attrs in graph.nodes(data=True)
+                if attrs.get("type") == tier
+            ),
+            key=natural_sort_key,
         )
         if not nodes:
             continue
@@ -61,6 +65,55 @@ def build_topology_positions(graph: nx.Graph) -> Dict[str, Tuple[float, float]]:
             x = -0.5 * span + index
             positions[node_id] = (x, tier_y[tier])
     return positions
+
+
+def count_layout_edge_crossings(
+    graph: nx.Graph,
+    positions: Dict[str, Tuple[float, float]],
+) -> int:
+    """Count proper intersections between distinct topology edge segments."""
+    edges = list(graph.edges())
+    crossings = 0
+
+    def orientation(a: Tuple[float, float], b: Tuple[float, float], c: Tuple[float, float]) -> float:
+        return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+
+    def on_segment(a: Tuple[float, float], b: Tuple[float, float], c: Tuple[float, float]) -> bool:
+        return (
+            min(a[0], c[0]) <= b[0] <= max(a[0], c[0])
+            and min(a[1], c[1]) <= b[1] <= max(a[1], c[1])
+        )
+
+    def proper_intersection(
+        a: Tuple[float, float],
+        b: Tuple[float, float],
+        c: Tuple[float, float],
+        d: Tuple[float, float],
+    ) -> bool:
+        o1 = orientation(a, b, c)
+        o2 = orientation(a, b, d)
+        o3 = orientation(c, d, a)
+        o4 = orientation(c, d, b)
+        eps = 1e-9
+        if o1 * o2 < -eps and o3 * o4 < -eps:
+            return True
+        if abs(o1) <= eps and on_segment(a, c, b):
+            return True
+        if abs(o2) <= eps and on_segment(a, d, b):
+            return True
+        if abs(o3) <= eps and on_segment(c, a, d):
+            return True
+        if abs(o4) <= eps and on_segment(c, b, d):
+            return True
+        return False
+
+    for index, (u, v) in enumerate(edges):
+        for u2, v2 in edges[index + 1:]:
+            if set((u, v)) & set((u2, v2)):
+                continue
+            if proper_intersection(positions[u], positions[v], positions[u2], positions[v2]):
+                crossings += 1
+    return crossings
 
 
 def build_topology_figure(
@@ -75,22 +128,21 @@ def build_topology_figure(
 
     # Edge traces are added first so nodes render above links.
     for u, v, data in graph.edges(data=True):
-        state = get_link_status(graph, u, v, targets)
-        status = str(state.get("status", data.get("status", "up"))).lower()
-        health = str(state.get("health", "HEALTHY")).upper()
+        state = get_link_status(u, v, targets)
+        has_data = bool(state)
+        status = str(state.get("status", "N/A")) if has_data else "N/A"
+        health = str(state.get("health", "UNKNOWN")).upper() if has_data else "UNKNOWN"
         latency = state.get("current_latency_ms")
         loss = state.get("current_loss_pct")
-        if latency is None:
-            latency = data.get("latency_ms")
-        if loss is None:
-            loss = data.get("loss_pct")
 
         if status == "down" or health == "CRITICAL":
             color = HEALTH_COLORS["CRITICAL"]
         elif health == "WARNING":
             color = HEALTH_COLORS["WARNING"]
-        else:
+        elif health == "HEALTHY":
             color = HEALTH_COLORS["HEALTHY"]
+        else:
+            color = HEALTH_COLORS["UNKNOWN"]
 
         try:
             loss_width = 2.0 + min(float(loss or 0.0), 10.0) * 0.25
@@ -109,8 +161,10 @@ def build_topology_figure(
                     f"<b>{u}-{v}</b><br>"
                     f"Status: {status}<br>"
                     f"Health: {health}<br>"
-                    f"Latency: {latency} ms<br>"
-                    f"Packet loss: {loss}%"
+                    f"Latency: {latency if latency is not None else 'N/A'}"
+                    f"{' ms' if latency is not None else ''}<br>"
+                    f"Packet loss: {loss if loss is not None else 'N/A'}"
+                    f"{'%' if loss is not None else ''}"
                     "<extra></extra>"
                 ),
                 showlegend=False,
@@ -124,12 +178,12 @@ def build_topology_figure(
     node_colors: list[str] = []
     node_sizes: list[int] = []
 
-    for node_id in sorted(graph.nodes()):
+    for node_id in sorted(graph.nodes(), key=natural_sort_key):
         data = graph.nodes[node_id]
         state = targets.get(node_id)
         if state is None:
             health = "UNKNOWN"
-            status = str(data.get("status", "up"))
+            status = "N/A"
             latency = None
             loss = None
         else:
