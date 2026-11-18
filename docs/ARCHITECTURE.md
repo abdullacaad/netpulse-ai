@@ -27,6 +27,8 @@ Builds a synthetic ISP network: core routers, distribution nodes, access links a
 
 Polls the simulated network on a schedule and records latency, packet loss and node health per link and node. Applies thresholds and keeps rolling trends. This is the only module that reads live (simulated) state.
 
+The dashboard path is explicit: the `Collector` writes telemetry to SQLite; `NetworkMonitor.from_db()` is then used to populate the monitoring read model from SQLite. The dashboard consumes `NetworkMonitor` status and never reads the simulator or collector directly. SQLite remains the only telemetry source of truth for dashboard data.
+
 ### database/ — SQLite storage layer
 
 One SQLite database for all telemetry history: timestamped measurements per node and link, plus detected anomalies and diagnoses. Keeps schema creation and queries in one place so no other module writes SQL directly.
@@ -49,7 +51,8 @@ Configuration, logging and helpers used by more than one module. No business log
 1. Simulator generates the network and its behaviour.
 2. Collector samples measurements and writes them to SQLite.
 3. Intelligence reads history from SQLite, flags anomalies, writes diagnoses back.
-4. Dashboard reads SQLite and renders the current state.
+4. `NetworkMonitor.from_db()` populates the monitoring read model from SQLite.
+5. Dashboard reads `NetworkMonitor` status and stored diagnoses and renders the current state.
 
 ## Technology choices
 

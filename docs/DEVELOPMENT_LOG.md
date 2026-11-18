@@ -2,6 +2,33 @@
 
 Record of what was done, when, and by whom. Newest entries at the top.
 
+## 2026-11-18 — Latency and packet-loss monitoring (thresholds and trends) (Issue #3)
+
+- Branch: `feature/monitoring` created from `main`.
+- Implemented `monitoring/rules.py`:
+  - `get_target_tier(target_id, target_type)`: infers network tier (`core`, `distribution`, `access`, `customer`, `node`).
+  - `ThresholdConfig`: configurable warning and critical thresholds per tier (Core: 10/20ms; Distribution: 30/60ms; Access/Customer: 50/100ms; Node: 5/10ms; Loss: 2%/5%) plus per-target overrides.
+  - `Breach` dataclass: encapsulates target, metric (`latency`, `packet_loss`, `status`), severity (`WARNING`, `CRITICAL`), current value, threshold, timestamp, and message.
+  - `evaluate_measurement()`: validates telemetry measurements against thresholds and status down conditions.
+- Implemented `monitoring/trends.py`:
+  - `RollingTrendTracker`: rolling window (default 20 samples) of telemetry measurements per target.
+  - Computes count, current, rolling average, min, max for latency and loss.
+  - Computes directional trends (`rising`, `falling`, `stable`) by comparing the median of the latest k samples (k = max(1, min(3, n // 3))) with the median of earlier samples.
+- Implemented `monitoring/monitor.py`:
+  - `NetworkMonitor`: orchestrates rules evaluation and rolling trend tracking.
+  - Exposes dashboard-ready methods: `get_target_status(target_id)`, `get_network_status()`, `get_breaching_targets()`, `get_all_breaches()`.
+  - Integrates with SQLite via `load_from_db()` and `NetworkMonitor.from_db(db_path)`.
+  - Included interactive demo runnable via `python -m monitoring.monitor`.
+- Updated `database/db.py`:
+  - Extended `query_measurements()` with optional `order: str = "ASC"` and `limit: Optional[int] = None` parameters.
+- Updated `monitoring/__init__.py`:
+  - Exported `Collector`, `NetworkMonitor`, `ThresholdConfig`, `Breach`, `RollingTrendTracker`, `evaluate_measurement`, and `get_target_tier` using PEP 562 lazy attribute loading to avoid circular imports.
+- Created test suites and verification:
+  - `tests/test_monitoring.py` (17 tests covering tier inference, threshold configuration, healthy/warning/critical evaluations, packet loss breaches, node down breaches, rolling window statistics, directional trend calculation, acceptance test with injected congestion and rising trend, network health aggregation, fault recovery, bounded database loading, immutable status getters, and database round-trip).
+  - `tests/test_db.py` (added `test_query_order_and_limit`, bringing total to 13 tests).
+  - Full test suite passing (77/77 tests across simulator, database, collector, and monitoring).
+
+
 ## 2026-11-18 — Telemetry collector and SQLite storage layer (Issue #5)
 
 - Branch: `feature/collector` created from `main`.

@@ -80,6 +80,19 @@ def init_db(path: Optional[Union[str, Path]] = None) -> None:
     conn.close()
 
 
+def list_target_ids(path: Optional[Union[str, Path]] = None) -> List[str]:
+    """Return distinct target identifiers present in the measurements table."""
+    conn = _open(path)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT DISTINCT target_id FROM measurements ORDER BY target_id ASC"
+        )
+        return [str(row["target_id"]) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
 def insert_measurements(
     rows: List[Dict[str, Any]],
     path: Optional[Union[str, Path]] = None,
@@ -133,18 +146,30 @@ def query_measurements(
     start: Optional[Union[str, datetime]] = None,
     end: Optional[Union[str, datetime]] = None,
     path: Optional[Union[str, Path]] = None,
+    order: str = "ASC",
+    limit: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
-    """Query telemetry measurements with optional target_id and timestamp filtering.
+    """Query telemetry measurements with optional target_id, timestamp filtering, ordering, and limit.
 
     Args:
         target_id: Filter by target identifier (node or link ID).
         start: Earliest timestamp (inclusive), as ISO string or datetime.
         end: Latest timestamp (inclusive), as ISO string or datetime.
         path: Optional database path. Defaults to DEFAULT_DB_PATH.
+        order: Sort order by timestamp ('ASC' or 'DESC'). Default 'ASC'.
+        limit: Optional maximum number of rows to return.
 
     Returns:
-        List of measurement dicts ordered by timestamp ASC, id ASC.
+        List of measurement dicts ordered by timestamp, id.
     """
+    normalized_order = str(order).strip().upper()
+    if normalized_order not in ("ASC", "DESC"):
+        raise ValueError("order must be 'ASC' or 'DESC'")
+    if isinstance(limit, bool) or (
+        limit is not None and (not isinstance(limit, int) or limit < 0)
+    ):
+        raise ValueError("limit must be None or a non-negative integer")
+
     conn = _open(path)
     query = ["SELECT id, timestamp, target_type, target_id, latency_ms, loss_pct, status FROM measurements"]
     conditions = []
@@ -165,7 +190,13 @@ def query_measurements(
     if conditions:
         query.append("WHERE " + " AND ".join(conditions))
 
-    query.append("ORDER BY timestamp ASC, id ASC")
+    sort_order = normalized_order
+    query.append(f"ORDER BY timestamp {sort_order}, id {sort_order}")
+
+    if limit is not None:
+        query.append("LIMIT ?")
+        params.append(int(limit))
+
     full_sql = " ".join(query)
 
     try:
