@@ -80,6 +80,19 @@ def init_db(path: Optional[Union[str, Path]] = None) -> None:
     conn.close()
 
 
+def list_target_ids(path: Optional[Union[str, Path]] = None) -> List[str]:
+    """Return distinct target identifiers present in the measurements table."""
+    conn = _open(path)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT DISTINCT target_id FROM measurements ORDER BY target_id ASC"
+        )
+        return [str(row["target_id"]) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
 def insert_measurements(
     rows: List[Dict[str, Any]],
     path: Optional[Union[str, Path]] = None,
@@ -149,6 +162,14 @@ def query_measurements(
     Returns:
         List of measurement dicts ordered by timestamp, id.
     """
+    normalized_order = str(order).strip().upper()
+    if normalized_order not in ("ASC", "DESC"):
+        raise ValueError("order must be 'ASC' or 'DESC'")
+    if isinstance(limit, bool) or (
+        limit is not None and (not isinstance(limit, int) or limit < 0)
+    ):
+        raise ValueError("limit must be None or a non-negative integer")
+
     conn = _open(path)
     query = ["SELECT id, timestamp, target_type, target_id, latency_ms, loss_pct, status FROM measurements"]
     conditions = []
@@ -169,7 +190,7 @@ def query_measurements(
     if conditions:
         query.append("WHERE " + " AND ".join(conditions))
 
-    sort_order = "DESC" if str(order).strip().upper() == "DESC" else "ASC"
+    sort_order = normalized_order
     query.append(f"ORDER BY timestamp {sort_order}, id {sort_order}")
 
     if limit is not None:

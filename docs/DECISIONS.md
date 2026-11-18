@@ -58,6 +58,6 @@ Decisions are recorded with date, context and status. Reversed decisions stay he
 
 ## 2026-11-18 — Tiered threshold rules and rolling trend architecture
 
-**Decision:** Threshold monitoring evaluates telemetry against network tier baselines (`core`, `distribution`, `access`, `customer`, `node`) with two severity tiers (`WARNING` and `CRITICAL`). Directional trends (`rising`, `falling`, `stable`) are calculated using a rolling window of recent measurements per target by comparing early vs. late half-window averages against relative and absolute deltas.
+**Decision:** Threshold monitoring evaluates telemetry against network tier baselines (`core`, `distribution`, `access`, `customer`, `node`) with two severity tiers (`WARNING` and `CRITICAL`). Directional trends (`rising`, `falling`, `stable`) are calculated using a rolling window of recent measurements per target by comparing the median of the latest k samples (k = max(1, min(3, n // 3))) with the median of the earlier samples, against relative and absolute deltas.
 
 **Why:** Fixed single-value thresholds across all links produce false positives (e.g. 30ms is normal for customer links but critical for core links). Directional trends give operators early warning before hard critical breaches occur and power the Streamlit dashboard without heavy ML dependencies in Week 3.

@@ -6,10 +6,11 @@ network and target health status for the Streamlit dashboard.
 """
 
 from datetime import datetime, timezone
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-from database.db import DEFAULT_DB_PATH, query_measurements
+from database.db import DEFAULT_DB_PATH, list_target_ids, query_measurements
 from monitoring.rules import (
     Breach,
     ThresholdConfig,
@@ -88,13 +89,16 @@ class NetworkMonitor:
             "health": health,
             "is_breaching": len(breaches) > 0,
             "timestamp": timestamp,
-            "current_latency_ms": measurement.get("latency_ms"),
+            "current_latency_ms": (
+                None
+                if str(measurement.get("status", "up")).lower() == "down"
+                else measurement.get("latency_ms")
+            ),
             "current_loss_pct": measurement.get("loss_pct"),
             "rolling_avg_latency_ms": trend["avg_latency_ms"],
             "rolling_min_latency_ms": trend["min_latency_ms"],
             "rolling_max_latency_ms": trend["max_latency_ms"],
             "latency_trend": trend["latency_trend"],
-            "current_loss_pct": trend["current_loss_pct"],
             "rolling_avg_loss_pct": trend["avg_loss_pct"],
             "rolling_min_loss_pct": trend["min_loss_pct"],
             "rolling_max_loss_pct": trend["max_loss_pct"],
@@ -123,7 +127,8 @@ class NetworkMonitor:
         Returns:
             Status dictionary or None if target has not been observed.
         """
-        return self._target_states.get(target_id)
+        state = self._target_states.get(target_id)
+        return deepcopy(state) if state is not None else None
 
     def get_network_status(self) -> Dict[str, Any]:
         """Return a network-wide summary for dashboard rendering.
@@ -159,7 +164,7 @@ class NetworkMonitor:
         else:
             overall = "HEALTHY"
 
-        return {
+        status = {
             "timestamp": self._last_evaluated_timestamp or datetime.now(timezone.utc).isoformat(),
             "overall_health": overall,
             "total_targets": total,
@@ -168,8 +173,9 @@ class NetworkMonitor:
             "critical_count": critical,
             "breaching_targets": breaching_target_ids,
             "active_breaches": all_active_breaches,
-            "targets": dict(self._target_states),
+            "targets": self._target_states,
         }
+        return deepcopy(status)
 
     def get_breaching_targets(self) -> List[Dict[str, Any]]:
         """Return status dictionaries for all targets currently in a breaching state.
@@ -180,17 +186,18 @@ class NetworkMonitor:
             state for state in self._target_states.values() if state["is_breaching"]
         ]
         # Sort CRITICAL first, then WARNING
-        return sorted(
+        breaching = sorted(
             breaching,
             key=lambda s: (0 if s["health"] == "CRITICAL" else 1, s["target_id"]),
         )
+        return deepcopy(breaching)
 
     def get_all_breaches(self) -> List[Dict[str, Any]]:
         """Return all active breach records across all targets."""
         breaches: List[Dict[str, Any]] = []
         for state in self._target_states.values():
             breaches.extend(state["breaches"])
-        return breaches
+        return deepcopy(breaches)
 
     def load_from_db(
         self,
@@ -210,6 +217,10 @@ class NetworkMonitor:
         """
         path = db_path if db_path is not None else self.db_path
         limit_size = window_size if window_size is not None else self.tracker.window_size
+        if isinstance(limit_size, bool) or (
+            not isinstance(limit_size, int) or limit_size < 0
+        ):
+            raise ValueError("window_size must be None or a non-negative integer")
 
         if target_id is not None:
             # Query recent measurements for specific target
@@ -224,13 +235,22 @@ class NetworkMonitor:
             self.record_measurements(rows)
             return len(rows)
 
-        # When target_id is None, query all measurements from DB and group chronologically
-        all_rows = query_measurements(path=path, order="ASC")
-        if not all_rows:
+        target_ids = list_target_ids(path)
+        if not target_ids:
             return 0
 
-        self.record_measurements(all_rows)
-        return len(all_rows)
+        total_rows = 0
+        for loaded_target_id in target_ids:
+            rows = query_measurements(
+                target_id=loaded_target_id,
+                path=path,
+                order="DESC",
+                limit=limit_size,
+            )
+            rows.reverse()
+            self.record_measurements(rows)
+            total_rows += len(rows)
+        return total_rows
 
     @classmethod
     def from_db(
@@ -287,10 +307,13 @@ if __name__ == "__main__":
     monitor.record_measurements(sim.tick())
 
     target_status = monitor.get_target_status("core_1-dist_1")
+    critical_threshold = monitor.thresholds.get_thresholds_for_target(
+        "core_1-dist_1", "link", "distribution"
+    )["latency_crit_ms"]
     print(f"\n[Step 3] Status for 'core_1-dist_1':")
     print(f"  Health:          {target_status['health']}")
     print(f"  Is Breaching:    {target_status['is_breaching']}")
-    print(f"  Current Latency: {target_status['current_latency_ms']} ms (threshold: 60.0 ms)")
+    print(f"  Current Latency: {target_status['current_latency_ms']} ms (threshold: {critical_threshold:.1f} ms)")
     print(f"  Latency Trend:   {target_status['latency_trend']}")
     print(f"  Rolling Avg:     {target_status['rolling_avg_latency_ms']} ms")
     print(f"  Active Breaches:")

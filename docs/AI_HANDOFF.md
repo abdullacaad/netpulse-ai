@@ -18,7 +18,7 @@ Updated whenever work is transferred between assistants. Each entry states what 
   - Updated `monitoring/__init__.py`: exported monitoring components with lazy loading.
   - Created `tests/test_monitoring.py` and updated `tests/test_db.py`.
 - **Verified:**
-  - 67/67 pytest tests passing (`pytest`).
+  - 77/77 pytest tests passing (`pytest`) after PR #10 review fixes.
   - Acceptance criterion verified: injected fault pushing link over latency threshold registers as breaching (`is_breaching: True`, `health: CRITICAL`), with recent rolling trend visible (`latency_trend: rising`, historical points exposed).
   - Standalone demo verified via `python -m monitoring.monitor`.
 - **Status:** Branch `feature/monitoring` pushed to `origin/feature/monitoring`. Awaiting review.

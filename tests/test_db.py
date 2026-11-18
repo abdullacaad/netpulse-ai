@@ -10,6 +10,7 @@ from database.db import (
     get_connection,
     init_db,
     insert_measurements,
+    list_target_ids,
     query_measurements,
 )
 
@@ -268,6 +269,33 @@ def test_query_order_and_limit(temp_db: Path):
     res_desc = query_measurements(target_id="core_1", order="DESC", limit=3, path=temp_db)
     assert len(res_desc) == 3
     assert [r["latency_ms"] for r in res_desc] == [9.0, 8.0, 7.0]
+
+
+def test_list_target_ids(temp_db: Path):
+    """Verify list_target_ids returns sorted distinct target identifiers."""
+    insert_measurements(
+        [
+            {"timestamp": "2026-11-18T01:00:00Z", "target_type": "link", "target_id": "link_b", "latency_ms": 10.0, "loss_pct": 0.0, "status": "up"},
+            {"timestamp": "2026-11-18T01:00:01Z", "target_type": "link", "target_id": "link_b", "latency_ms": 11.0, "loss_pct": 0.0, "status": "up"},
+            {"timestamp": "2026-11-18T01:00:00Z", "target_type": "node", "target_id": "node_a", "latency_ms": 1.0, "loss_pct": 0.0, "status": "up"},
+        ],
+        temp_db,
+    )
+    assert list_target_ids(temp_db) == ["link_b", "node_a"]
+
+
+@pytest.mark.parametrize("order", ["sideways", "", "ascending", None])
+def test_query_rejects_invalid_order(temp_db: Path, order):
+    """Verify query_measurements rejects unsupported ordering values."""
+    with pytest.raises(ValueError, match="order"):
+        query_measurements(path=temp_db, order=order)
+
+
+@pytest.mark.parametrize("limit", [-1, True, False, 1.5, "3"])
+def test_query_rejects_invalid_limit(temp_db: Path, limit):
+    """Verify query_measurements rejects booleans, negatives, and non-integers."""
+    with pytest.raises(ValueError, match="limit"):
+        query_measurements(path=temp_db, limit=limit)
 
 
 def test_insert_datetime_object_in_row(temp_db: Path):

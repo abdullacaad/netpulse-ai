@@ -5,6 +5,7 @@ target and computes rolling metrics, statistics, and directional trends.
 """
 
 from collections import deque
+from statistics import median
 from typing import Any, Dict, List, Optional
 
 
@@ -138,24 +139,21 @@ class RollingTrendTracker:
         series: List[float], rel_threshold: float = 0.15, abs_threshold: float = 1.0
     ) -> str:
         """Determine whether a numerical time series is rising, falling, or stable."""
-        if len(series) < 3:
+        if len(series) < 2:
             return "stable"
 
-        mid = len(series) // 2
-        first_half = series[:mid]
-        second_half = series[mid:]
-
-        mean1 = sum(first_half) / len(first_half)
-        mean2 = sum(second_half) / len(second_half)
-        delta = mean2 - mean1
+        k = max(1, min(3, len(series) // 3))
+        recent_median = median(series[-k:])
+        earlier_median = median(series[:-k])
+        delta = recent_median - earlier_median
 
         if abs(delta) < abs_threshold:
             return "stable"
 
-        if mean1 == 0:
+        if earlier_median == 0:
             return "rising" if delta > 0 else "falling"
 
-        rel_change = delta / mean1
+        rel_change = delta / earlier_median
 
         if rel_change >= rel_threshold:
             return "rising"

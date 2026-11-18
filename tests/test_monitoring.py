@@ -278,6 +278,21 @@ def test_rolling_trend_direction_rising_and_falling():
         )
     assert tracker.get_trend("link_stable")["latency_trend"] == "stable"
 
+    # Recovered trend: high fault sample followed by a healthy sample is not rising.
+    tracker = RollingTrendTracker(window_size=10)
+    for i, lat in enumerate([15.0, 15.0, 15.0, 75.0, 15.0]):
+        tracker.add_measurement(
+            {
+                "timestamp": f"2026-11-18T12:00:{i:02d}Z",
+                "target_type": "link",
+                "target_id": "link_recovered",
+                "latency_ms": lat,
+                "loss_pct": 0.1,
+                "status": "up",
+            }
+        )
+    assert tracker.get_trend("link_recovered")["latency_trend"] == "stable"
+
 
 # ============================================================================
 # 3. Acceptance Criteria & NetworkMonitor Integration Tests
@@ -371,12 +386,28 @@ def test_network_monitor_node_down_fault_breaches():
     assert node_status["is_breaching"] is True
     assert node_status["health"] == "CRITICAL"
     assert node_status["status"] == "down"
+    assert node_status["current_latency_ms"] is None
+    assert node_status["current_loss_pct"] == 100.0
 
     # Attached link core_1-dist_1 is also down
     link_status = monitor.get_target_status("core_1-dist_1")
     assert link_status["is_breaching"] is True
     assert link_status["health"] == "CRITICAL"
     assert link_status["status"] == "down"
+
+    monitor.record_measurement(
+        {
+            "timestamp": "2026-11-18T12:00:10Z",
+            "target_type": "node",
+            "target_id": "dist_1",
+            "latency_ms": 0.0,
+            "loss_pct": None,
+            "status": "down",
+        }
+    )
+    node_status = monitor.get_target_status("dist_1")
+    assert node_status["current_latency_ms"] is None
+    assert node_status["current_loss_pct"] is None
 
 
 def test_network_monitor_recovery_after_fault():
@@ -408,8 +439,13 @@ def test_network_monitor_load_from_db(temp_db: Path):
     sim.inject_fault("congestion", ("core_1", "dist_1"), duration=2)
     collector.collect_once()
 
+    monitor_direct = NetworkMonitor(db_path=temp_db)
+    for invalid_window in (-1, True, 1.5, "3"):
+        with pytest.raises(ValueError, match="window_size"):
+            monitor_direct.load_from_db(window_size=invalid_window)
+
     # Load into NetworkMonitor from database only
-    monitor = NetworkMonitor.from_db(db_path=temp_db, window_size=10)
+    monitor = NetworkMonitor.from_db(db_path=temp_db, window_size=2)
 
     # Verify target status and breaches loaded correctly
     status = monitor.get_target_status("core_1-dist_1")
@@ -417,7 +453,7 @@ def test_network_monitor_load_from_db(temp_db: Path):
     assert status["is_breaching"] is True
     assert status["health"] == "CRITICAL"
     assert status["current_latency_ms"] > 60.0
-    assert len(status["recent_history"]) == 3
+    assert len(status["recent_history"]) == 2
     assert status["latency_trend"] == "rising"
 
     # Verify overall network status
@@ -434,7 +470,20 @@ def test_network_monitor_reset():
     monitor.record_measurements(sim.tick())
     assert len(monitor.get_network_status()["targets"]) > 0
 
+    target = monitor.get_target_status("core_1")
+    target["health"] = "CRITICAL"
+    target["recent_history"].clear()
+    assert monitor.get_target_status("core_1")["health"] == "HEALTHY"
+    assert len(monitor.get_target_status("core_1")["recent_history"]) == 1
+
+    network = monitor.get_network_status()
+    network["targets"]["core_1"]["health"] = "CRITICAL"
+    network["targets"].clear()
+    assert len(monitor.get_network_status()["targets"]) > 0
+    assert monitor.get_target_status("core_1")["health"] == "HEALTHY"
+
     monitor.reset()
     assert len(monitor.get_network_status()["targets"]) == 0
     assert monitor.get_target_status("core_1") is None
     assert monitor.get_all_breaches() == []
+

@@ -13,7 +13,7 @@ Record of what was done, when, and by whom. Newest entries at the top.
 - Implemented `monitoring/trends.py`:
   - `RollingTrendTracker`: rolling window (default 20 samples) of telemetry measurements per target.
   - Computes count, current, rolling average, min, max for latency and loss.
-  - Computes directional trends (`rising`, `falling`, `stable`) comparing first-half vs. second-half window means.
+  - Computes directional trends (`rising`, `falling`, `stable`) by comparing the median of the latest k samples (k = max(1, min(3, n // 3))) with the median of earlier samples.
 - Implemented `monitoring/monitor.py`:
   - `NetworkMonitor`: orchestrates rules evaluation and rolling trend tracking.
   - Exposes dashboard-ready methods: `get_target_status(target_id)`, `get_network_status()`, `get_breaching_targets()`, `get_all_breaches()`.
@@ -24,9 +24,9 @@ Record of what was done, when, and by whom. Newest entries at the top.
 - Updated `monitoring/__init__.py`:
   - Exported `Collector`, `NetworkMonitor`, `ThresholdConfig`, `Breach`, `RollingTrendTracker`, `evaluate_measurement`, and `get_target_tier` using PEP 562 lazy attribute loading to avoid circular imports.
 - Created test suites and verification:
-  - `tests/test_monitoring.py` (14 tests covering tier inference, threshold configuration, healthy/warning/critical evaluations, packet loss breaches, node down breaches, rolling window statistics, directional trend calculation, acceptance test with injected congestion and rising trend, network health aggregation, fault recovery, and database round-trip).
+  - `tests/test_monitoring.py` (17 tests covering tier inference, threshold configuration, healthy/warning/critical evaluations, packet loss breaches, node down breaches, rolling window statistics, directional trend calculation, acceptance test with injected congestion and rising trend, network health aggregation, fault recovery, bounded database loading, immutable status getters, and database round-trip).
   - `tests/test_db.py` (added `test_query_order_and_limit`, bringing total to 13 tests).
-  - Full test suite passing (67/67 tests across simulator, database, collector, and monitoring).
+  - Full test suite passing (77/77 tests across simulator, database, collector, and monitoring).
 
 
 ## 2026-11-18 — Telemetry collector and SQLite storage layer (Issue #5)
