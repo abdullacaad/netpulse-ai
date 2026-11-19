@@ -61,3 +61,33 @@ Decisions are recorded with date, context and status. Reversed decisions stay he
 **Decision:** Threshold monitoring evaluates telemetry against network tier baselines (`core`, `distribution`, `access`, `customer`, `node`) with two severity tiers (`WARNING` and `CRITICAL`). Directional trends (`rising`, `falling`, `stable`) are calculated using a rolling window of recent measurements per target by comparing the median of the latest k samples (k = max(1, min(3, n // 3))) with the median of the earlier samples, against relative and absolute deltas.
 
 **Why:** Fixed single-value thresholds across all links produce false positives (e.g. 30ms is normal for customer links but critical for core links). Directional trends give operators early warning before hard critical breaches occur and power the Streamlit dashboard without heavy ML dependencies in Week 3.
+
+## 2026-11-18 — Plotly for topology visualisation
+
+**Decision:** Use Plotly Scatter traces for the Streamlit topology graph. Plotly provides interactive pan, hover details, and direct color/width control for the NetworkX node and link model.
+
+**Why:** Plotly integrates cleanly with Streamlit and avoids an additional web rendering dependency such as PyVis.
+
+## 2026-11-18 — Hierarchical deterministic topology layout
+
+**Decision:** Position nodes in deterministic tiers (`core`, `distribution`, `access`, `customer`) and sort numbered names with natural sorting (`cust_2` before `cust_10`). The graph renderer derives all positions locally and does not store layout coordinates in SQLite.
+
+**Why:** A fixed hierarchical layout is reproducible and natural node ordering keeps customer edges aligned without crossing.
+
+## 2026-11-18 — Static topology graph source
+
+**Decision:** The topology graph structure is built by `network/topology.py`; SQLite stores telemetry measurements and monitoring state is populated through `NetworkMonitor.from_db()`.
+
+**Why:** NetworkX topology structure is a configuration/model concern, while SQLite remains the telemetry source. Mixing topology structure into telemetry storage would blur the module boundaries.
+
+## 2026-11-18 — Dashboard remains read-only
+
+**Decision:** The Streamlit dashboard reads SQLite only. It may populate `NetworkMonitor.from_db()` and render topology/monitor status, but it must not import or invoke `Simulator` or `Collector`.
+
+**Why:** Collection belongs to the monitoring pipeline. A read-only dashboard prevents UI actions from advancing simulation state or bypassing the SQLite data flow.
+
+## 2026-11-19 — Empty monitor reports UNKNOWN health
+
+**Decision:** `NetworkMonitor.get_network_status()` now returns `overall_health = "UNKNOWN"` when there are no targets (previously `"HEALTHY"`), which changes the behaviour PR #10 introduced, so later anomaly-detection code must handle `UNKNOWN` rather than treating "not CRITICAL or WARNING" as healthy.
+
+**Why:** An empty database must not display as a healthy network; "no telemetry" is a different state from "telemetry within thresholds".

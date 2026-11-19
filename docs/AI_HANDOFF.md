@@ -8,6 +8,16 @@ Updated whenever work is transferred between assistants. Each entry states what 
 - The assistant starting work reads the latest entry plus `docs/PROJECT_CONTEXT.md` first.
 - State facts only: file paths, test results, open questions. Never claim work is complete unless it is implemented, tested and merged.
 
+## 2026-11-18 — Network topology visualisation (Issue #4)
+
+- **Implemented:** Interactive NetworkX topology dashboard on branch `feature/topology`.
+  - Added `dashboard/topology.py` with deterministic hierarchical layout, Plotly hover interactions, and health-colored nodes and links.
+  - Added `dashboard/app.py` with repo-root bootstrap and SQLite-only `NetworkMonitor.from_db()` loading.
+  - Added `plotly` to `requirements.txt`.
+  - Added topology/dashboard tests for full 30-node/29-link rendering, natural layout, live health colors, no-data state, down targets, and SQLite loading.
+- **Verified:** 88/88 pytest tests passing after PR #11 review fixes.
+- **Status:** Pushed to `origin/feature/topology`; awaiting PR review. Do not merge the PR.
+
 ## 2026-11-18 — Latency and packet-loss monitoring (thresholds and trends) (Antigravity → Maintainer / Claude)
 
 - **Implemented, awaiting review:** Implemented GitHub issue #3 (latency and packet-loss monitoring with thresholds and trends) on branch `feature/monitoring` (branched from `main`).

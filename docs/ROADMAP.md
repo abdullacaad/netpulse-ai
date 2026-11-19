@@ -23,9 +23,9 @@
 
 ## Feature checklist
 
-- [ ] Network simulator
-- [ ] Telemetry collector
-- [ ] Latency and packet-loss monitoring
+- [x] Network simulator
+- [x] Telemetry collector
+- [x] Latency and packet-loss monitoring
 - [ ] Network topology visualisation
 - [ ] Anomaly detection
 - [ ] Root-cause diagnosis
