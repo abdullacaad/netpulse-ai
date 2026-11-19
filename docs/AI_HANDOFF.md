@@ -8,6 +8,16 @@ Updated whenever work is transferred between assistants. Each entry states what 
 - The assistant starting work reads the latest entry plus `docs/PROJECT_CONTEXT.md` first.
 - State facts only: file paths, test results, open questions. Never claim work is complete unless it is implemented, tested and merged.
 
+## 2026-11-19 — Anomaly detection (Issue #1)
+
+- **Implemented:** Per-target learned baselines and SQLite anomaly persistence on `feature/anomaly-detection`.
+  - Added robust median/MAD baseline detection for latency, packet loss, node behavior, and link status.
+  - Added the `anomalies` table and database-owned insert/query helpers.
+  - Added evidence, explicit learned bounds, severity, score, and detection method to anomaly records.
+  - Kept root-cause diagnosis out of scope.
+- **Verified:** 101/101 pytest tests passing, including injected fault evidence, healthy runs across seeds, and a subtle fault below fixed monitoring warning thresholds.
+- **Status:** Awaiting commit and push for maintainer review.
+
 ## 2026-11-18 — Network topology visualisation (Issue #4)
 
 - **Implemented:** Interactive NetworkX topology dashboard on branch `feature/topology`.

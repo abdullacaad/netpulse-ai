@@ -7,6 +7,7 @@ No other module should write SQL directly.
 from datetime import datetime, timezone
 from pathlib import Path
 import sqlite3
+import json
 from typing import Any, Dict, List, Optional, Union
 
 DEFAULT_DB_PATH = Path("data/netpulse.db")
@@ -27,6 +28,28 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_measurements_target_time
 
 CREATE INDEX IF NOT EXISTS idx_measurements_timestamp 
     ON measurements (timestamp);
+
+CREATE TABLE IF NOT EXISTS anomalies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    anomaly_type TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    score REAL NOT NULL,
+    evidence TEXT NOT NULL,
+    baseline_latency_ms REAL,
+    baseline_loss_pct REAL,
+    threshold_latency_ms REAL,
+    threshold_loss_pct REAL,
+    method TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_anomalies_target_time_metric
+    ON anomalies (target_id, timestamp, anomaly_type);
+
+CREATE INDEX IF NOT EXISTS idx_anomalies_timestamp
+    ON anomalies (timestamp);
 """
 
 
@@ -137,6 +160,113 @@ def insert_measurements(
             ]
             conn.executemany(insert_sql, prepared)
             return conn.total_changes - before
+    finally:
+        conn.close()
+
+
+def insert_anomalies(
+    rows: List[Dict[str, Any]],
+    path: Optional[Union[str, Path]] = None,
+) -> int:
+    """Insert flagged anomalies and their evidence into SQLite."""
+    if not rows:
+        return 0
+
+    conn = _open(path)
+    insert_sql = """
+    INSERT OR IGNORE INTO anomalies (
+        timestamp, target_type, target_id, anomaly_type, severity, score,
+        evidence, baseline_latency_ms, baseline_loss_pct,
+        threshold_latency_ms, threshold_loss_pct, method
+    ) VALUES (
+        :timestamp, :target_type, :target_id, :anomaly_type, :severity, :score,
+        :evidence, :baseline_latency_ms, :baseline_loss_pct,
+        :threshold_latency_ms, :threshold_loss_pct, :method
+    )
+    """
+    try:
+        with conn:
+            before = conn.total_changes
+            prepared = []
+            for row in rows:
+                evidence = row.get("evidence", {})
+                prepared.append(
+                    {
+                        "timestamp": _to_utc_iso(row["timestamp"]),
+                        "target_type": str(row["target_type"]),
+                        "target_id": str(row["target_id"]),
+                        "anomaly_type": str(row["anomaly_type"]),
+                        "severity": str(row["severity"]),
+                        "score": float(row["score"]),
+                        "evidence": evidence if isinstance(evidence, str) else json.dumps(evidence, sort_keys=True),
+                        "baseline_latency_ms": row.get("baseline_latency_ms"),
+                        "baseline_loss_pct": row.get("baseline_loss_pct"),
+                        "threshold_latency_ms": row.get("threshold_latency_ms"),
+                        "threshold_loss_pct": row.get("threshold_loss_pct"),
+                        "method": str(row.get("method", "robust-statistical-baseline")),
+                    }
+                )
+            conn.executemany(insert_sql, prepared)
+            return conn.total_changes - before
+    finally:
+        conn.close()
+
+
+def query_anomalies(
+    target_id: Optional[str] = None,
+    start: Optional[Union[str, datetime]] = None,
+    end: Optional[Union[str, datetime]] = None,
+    path: Optional[Union[str, Path]] = None,
+    order: str = "ASC",
+    limit: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """Query anomaly records and decode their evidence JSON."""
+    normalized_order = str(order).strip().upper()
+    if normalized_order not in ("ASC", "DESC"):
+        raise ValueError("order must be 'ASC' or 'DESC'")
+    if isinstance(limit, bool) or (
+        limit is not None and (not isinstance(limit, int) or limit < 0)
+    ):
+        raise ValueError("limit must be None or a non-negative integer")
+
+    conn = _open(path)
+    query = [
+        "SELECT id, timestamp, target_type, target_id, anomaly_type, severity, "
+        "score, evidence, baseline_latency_ms, baseline_loss_pct, "
+        "threshold_latency_ms, threshold_loss_pct, method FROM anomalies"
+    ]
+    conditions: List[str] = []
+    params: List[Any] = []
+
+    if target_id is not None:
+        conditions.append("target_id = ?")
+        params.append(str(target_id))
+    if start is not None:
+        conditions.append("timestamp >= ?")
+        params.append(_to_utc_iso(start))
+    if end is not None:
+        conditions.append("timestamp <= ?")
+        params.append(_to_utc_iso(end))
+    if conditions:
+        query.append("WHERE " + " AND ".join(conditions))
+
+    query.append(f"ORDER BY timestamp {normalized_order}, id {normalized_order}")
+    if limit is not None:
+        query.append("LIMIT ?")
+        params.append(limit)
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute(" ".join(query), params)
+        results = []
+        for row in cursor.fetchall():
+            result = dict(row)
+            try:
+                result["evidence"] = json.loads(result["evidence"])
+            except (TypeError, json.JSONDecodeError):
+                result["evidence"] = {}
+            results.append(result)
+        return results
     finally:
         conn.close()
 

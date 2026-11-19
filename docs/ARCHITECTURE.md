@@ -35,7 +35,7 @@ One SQLite database for all telemetry history: timestamped measurements per node
 
 ### intelligence/ — anomaly detection and root-cause diagnosis
 
-- **Anomaly detection:** statistical and scikit-learn models over telemetry history flag unusual latency, loss or node behaviour. Baselines are learned from normal simulated traffic; thresholds are explicit and recorded.
+- **Anomaly detection:** per-target statistical baselines are learned from normal simulated traffic and flag unusual latency, loss or node behaviour. Thresholds are explicit and recorded alongside each SQLite anomaly's evidence. This layer does not reuse the monitoring module's fixed threshold rules or perform root-cause diagnosis.
 - **Root-cause diagnosis:** when an anomaly is flagged, topology-aware correlation walks the graph from affected nodes toward the shared upstream link or node most likely responsible, and reports a ranked list of candidate causes with evidence.
 
 ### dashboard/ — Streamlit UI

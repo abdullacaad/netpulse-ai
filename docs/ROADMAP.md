@@ -27,7 +27,7 @@
 - [x] Telemetry collector
 - [x] Latency and packet-loss monitoring
 - [ ] Network topology visualisation
-- [ ] Anomaly detection
+- [x] Anomaly detection
 - [ ] Root-cause diagnosis
 - [ ] Monitoring dashboard
 

@@ -2,6 +2,21 @@
 
 Record of what was done, when, and by whom. Newest entries at the top.
 
+## 2026-11-19 — Anomaly detection (Issue #1)
+
+- Branch: `feature/anomaly-detection` created from merged `main`.
+- Implemented `intelligence/anomaly.py`:
+  - Per-target robust median/MAD baselines learned only from up-status telemetry.
+  - Explicit latency and packet-loss upper bounds stored with every detection.
+  - Latency, packet-loss, node-down, and link-down anomalies with severity and evidence.
+  - Optional isolation-forest training support, while robust statistics remain the deterministic detection model.
+- Implemented SQLite anomaly persistence in `database/db.py`:
+  - `anomalies` table with idempotent target/timestamp/metric uniqueness.
+  - `insert_anomalies()` and `query_anomalies()` for evidence round-trips.
+- Added `intelligence/__init__.py` exports.
+- Added tests for injected congestion, subtle below-threshold faults, healthy runs across seeds, packet loss, node down, and SQLite baseline loading.
+- Full test suite passing (101/101 tests).
+
 ## 2026-11-18 — Network topology visualisation (Issue #4)
 
 - Branch: `feature/topology` created from `main`.

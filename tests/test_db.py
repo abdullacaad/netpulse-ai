@@ -12,6 +12,8 @@ from database.db import (
     insert_measurements,
     list_target_ids,
     query_measurements,
+    insert_anomalies,
+    query_anomalies,
 )
 
 
@@ -318,6 +320,68 @@ def test_auto_creates_parent_directory(tmp_path: Path):
 
     init_db(deep_path)
     assert deep_path.exists()
+
+
+def test_anomalies_schema_and_round_trip(temp_db: Path):
+    """Verify the anomalies table stores evidence and idempotently round-trips."""
+    init_db(temp_db)
+    conn = get_connection(temp_db)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='anomalies'"
+        )
+        assert cursor.fetchone() is not None
+        cursor.execute("PRAGMA table_info(anomalies)")
+        columns = {row["name"] for row in cursor.fetchall()}
+        assert {
+            "timestamp",
+            "target_type",
+            "target_id",
+            "anomaly_type",
+            "severity",
+            "score",
+            "evidence",
+            "method",
+        }.issubset(columns)
+    finally:
+        conn.close()
+
+    anomaly = {
+        "timestamp": "2026-11-18T12:00:00Z",
+        "target_type": "link",
+        "target_id": "core_1-dist_1",
+        "anomaly_type": "latency",
+        "severity": "WARNING",
+        "score": 0.35,
+        "evidence": {
+            "observed_latency_ms": 20.0,
+            "baseline_latency_median_ms": 15.0,
+            "upper_latency_bound_ms": 18.0,
+        },
+        "baseline_latency_ms": 15.0,
+        "baseline_loss_pct": 0.1,
+        "threshold_latency_ms": 18.0,
+        "threshold_loss_pct": 0.5,
+        "method": "robust-median-mad",
+    }
+    assert insert_anomalies([anomaly], temp_db) == 1
+    assert insert_anomalies([anomaly], temp_db) == 0
+
+    rows = query_anomalies(target_id="core_1-dist_1", path=temp_db)
+    assert len(rows) == 1
+    assert rows[0]["anomaly_type"] == "latency"
+    assert rows[0]["evidence"]["observed_latency_ms"] == 20.0
+
+
+@pytest.mark.parametrize(
+    "limit",
+    [-1, True, 1.5, "3"],
+)
+def test_query_anomalies_validates_limit(temp_db: Path, limit):
+    """Verify anomaly history cannot receive SQLite-style unlimited or bool limits."""
+    with pytest.raises(ValueError, match="limit"):
+        query_anomalies(path=temp_db, limit=limit)
 
 
 def test_reject_memory_path():

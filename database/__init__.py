@@ -6,6 +6,8 @@ from .db import (
     init_db,
     insert_measurements,
     query_measurements,
+    insert_anomalies,
+    query_anomalies,
 )
 
 __all__ = [
@@ -14,4 +16,6 @@ __all__ = [
     "init_db",
     "insert_measurements",
     "query_measurements",
+    "insert_anomalies",
+    "query_anomalies",
 ]
