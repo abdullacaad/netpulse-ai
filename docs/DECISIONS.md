@@ -85,3 +85,9 @@ Decisions are recorded with date, context and status. Reversed decisions stay he
 **Decision:** The Streamlit dashboard reads SQLite only. It may populate `NetworkMonitor.from_db()` and render topology/monitor status, but it must not import or invoke `Simulator` or `Collector`.
 
 **Why:** Collection belongs to the monitoring pipeline. A read-only dashboard prevents UI actions from advancing simulation state or bypassing the SQLite data flow.
+
+## 2026-11-19 — Empty monitor reports UNKNOWN health
+
+**Decision:** `NetworkMonitor.get_network_status()` now returns `overall_health = "UNKNOWN"` when there are no targets (previously `"HEALTHY"`), which changes the behaviour PR #10 introduced, so later anomaly-detection code must handle `UNKNOWN` rather than treating "not CRITICAL or WARNING" as healthy.
+
+**Why:** An empty database must not display as a healthy network; "no telemetry" is a different state from "telemetry within thresholds".

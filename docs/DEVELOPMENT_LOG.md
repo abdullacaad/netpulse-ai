@@ -14,10 +14,10 @@ Record of what was done, when, and by whom. Newest entries at the top.
 - Implemented `dashboard/app.py`:
   - Streamlit dashboard entry point.
   - Loads `NetworkMonitor` from SQLite with `from_db()`.
-  - Supports explicit SQLite refresh and one-tick live collection via `Collector`.
+  - Reads SQLite only via `NetworkMonitor.from_db()`; sidebar slider sets the rolling window.
 - Updated `requirements.txt` with `plotly`.
 - Added `tests/test_dashboard.py` covering full topology counts, deterministic layout, monitor-driven node/link colors, down targets, and SQLite read-model loading.
-- Full test suite passing (83/83 tests across simulator, database, collector, monitoring, and dashboard).
+- Full test suite passing (88/88 tests across simulator, database, collector, monitoring, and dashboard).
 
 ## 2026-11-18 — Latency and packet-loss monitoring (thresholds and trends) (Issue #3)
 
