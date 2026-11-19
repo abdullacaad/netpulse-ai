@@ -59,7 +59,7 @@ Configuration, logging and helpers used by more than one module. No business log
 - **Python** — the whole stack in one language.
 - **Streamlit** — fastest path to a working dashboard.
 - **Pandas** — telemetry as time-series tables.
-- **scikit-learn** — anomaly detection baselines (isolation forest / statistical models first).
+- **scikit-learn** — reserved for later multivariate anomaly models; statistical baselines are the current detector.
 - **NetworkX** — topology as a graph; shortest paths and neighbour lookups for diagnosis.
 - **SQLite** — zero-setup storage, enough for MVP telemetry volumes.
 

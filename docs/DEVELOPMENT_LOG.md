@@ -9,7 +9,7 @@ Record of what was done, when, and by whom. Newest entries at the top.
   - Per-target robust median/MAD baselines learned only from up-status telemetry.
   - Explicit latency and packet-loss upper bounds stored with every detection.
   - Latency, packet-loss, node-down, and link-down anomalies with severity and evidence.
-  - Optional isolation-forest training support, while robust statistics remain the deterministic detection model.
+  - Robust median/MAD statistics remain the deterministic detection model.
 - Implemented SQLite anomaly persistence in `database/db.py`:
   - `anomalies` table with idempotent target/timestamp/metric uniqueness.
   - `insert_anomalies()` and `query_anomalies()` for evidence round-trips.

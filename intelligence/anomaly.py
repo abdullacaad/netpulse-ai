@@ -1,9 +1,9 @@
 """Baseline anomaly detection for NetPulse AI telemetry."""
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Union
-import math
 import statistics
 
 from database.db import (
@@ -115,7 +115,6 @@ class AnomalyDetector:
         self.db_path = db_path if db_path is not None else DEFAULT_DB_PATH
         self.minimum_samples = minimum_samples
         self.baselines: Dict[str, AnomalyBaseline] = {}
-        self._isolation_forests: Dict[str, Any] = {}
 
     def fit(self, rows: Iterable[Dict[str, Any]]) -> int:
         """Learn normal baselines by grouping up-status telemetry per target."""
@@ -157,35 +156,32 @@ class AnomalyDetector:
             )
             self.baselines[target_id] = baseline
             count += 1
-
-            if len(normal_rows) >= 8:
-                try:
-                    import numpy as np
-                    from sklearn.ensemble import IsolationForest
-
-                    features = [
-                        [float(row["latency_ms"] or 0.0), float(row["loss_pct"] or 0.0)]
-                        for row in normal_rows
-                        if row.get("latency_ms") is not None or row.get("loss_pct") is not None
-                    ]
-                    if len(features) >= 8:
-                        forest = IsolationForest(
-                            n_estimators=100,
-                            contamination=0.02,
-                            random_state=42,
-                        )
-                        forest.fit(np.asarray(features, dtype=float))
-                        self._isolation_forests[target_id] = forest
-                except (ImportError, ValueError):
-                    pass
         return count
 
     def fit_from_db(
         self,
         target_id: Optional[str] = None,
         db_path: Optional[Union[str, Path]] = None,
+        start: Optional[Union[str, datetime]] = None,
+        end: Optional[Union[str, datetime]] = None,
+        limit: Optional[int] = None,
     ) -> int:
-        """Learn baselines from normal telemetry history in SQLite."""
+        """Learn baselines from a fault-free SQLite training window.
+
+        Args:
+            target_id: Optional single-target filter.
+            db_path: SQLite database path.
+            start: Optional earliest timestamp for the training window.
+            end: Optional latest timestamp for the training window.
+            limit: Optional maximum number of training rows per target.
+
+        The caller must select a documented fault-free window. Rows with
+        status="up" are not sufficient to prove that a fault was absent.
+        """
+        if isinstance(limit, bool) or (
+            limit is not None and (not isinstance(limit, int) or limit < 0)
+        ):
+            raise ValueError("limit must be None or a non-negative integer")
         path = db_path if db_path is not None else self.db_path
         target_ids = [target_id] if target_id is not None else list_target_ids(path)
         normal_rows: List[Dict[str, Any]] = []
@@ -195,6 +191,9 @@ class AnomalyDetector:
                     target_id=loaded_target_id,
                     path=path,
                     order="ASC",
+                    start=start,
+                    end=end,
+                    limit=limit,
                 )
             )
         return self.fit(normal_rows)

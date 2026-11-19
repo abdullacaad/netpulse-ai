@@ -103,3 +103,9 @@ Decisions are recorded with date, context and status. Reversed decisions stay he
 **Decision:** The database layer owns an `anomalies` table and idempotent insert/query helpers. Anomaly rows include the metric, severity, score, JSON evidence, learned baseline values, explicit bounds, and detection method.
 
 **Why:** Intelligence modules must not execute SQL outside the database module, and the evidence must remain available for dashboards and later diagnosis work.
+
+## 2026-11-19 — Statistical baselines first; defer scikit-learn
+
+**Decision:** The anomaly detector uses robust median/MAD statistical baselines and no IsolationForest or other scikit-learn model. Scikit-learn is deferred until a later multivariate anomaly model has enough evidence to justify training and scoring it.
+
+**Why:** IsolationForest was previously fitted but never scored, and an unused or unsupervised contamination setting could create false positives. The median/MAD detector is deterministic, interpretable, and can be validated without a separate model artifact.

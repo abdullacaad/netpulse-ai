@@ -1,6 +1,7 @@
 """Tests for learned-baseline anomaly detection."""
 
 from pathlib import Path
+import time
 
 import pytest
 
@@ -130,8 +131,8 @@ def test_packet_loss_anomaly_has_explicit_evidence(temp_db: Path):
     assert packet.method == "robust-median-mad"
 
 
-def test_node_down_is_anomaly_even_when_monitor_health_is_unknown():
-    """Down node behavior is detected without assuming HEALTHY/WARNING/CRITICAL status."""
+def test_down_node_status_is_detected_as_down_node_anomaly():
+    """A down node with normal baseline history is classified as node_down."""
     normal = [
         {
             "timestamp": f"2026-11-18T12:00:{i:02d}Z",
@@ -180,3 +181,66 @@ def test_fit_from_db_learns_per_target_without_measurement_threshold_rules(temp_
 
     assert detector.fit_from_db(db_path=temp_db) == 1
     assert detector.baselines["core_1-dist_1"].latency_threshold == pytest.approx(16.5)
+
+
+def test_detector_has_no_unused_model_state_and_fits_59_targets_quickly():
+    """Median/MAD fitting must be fast and must not retain an unused IsolationForest."""
+    rows = []
+    for target_number in range(59):
+        target_id = f"target_{target_number}"
+        for i in range(12):
+            rows.append(
+                {
+                    "timestamp": f"2026-11-19T12:00:{i:02d}Z",
+                    "target_type": "link",
+                    "target_id": target_id,
+                    "latency_ms": 15.0 + (i % 3) * 0.1,
+                    "loss_pct": 0.1,
+                    "status": "up",
+                }
+            )
+
+    detector = AnomalyDetector(db_path=":memory:")
+    assert not hasattr(detector, "_isolation_forests")
+    started = time.perf_counter()
+    assert detector.fit(rows) == 59
+    elapsed = time.perf_counter() - started
+    assert elapsed < 0.5
+
+
+def test_fit_from_db_training_window_excludes_faulty_majority(temp_db: Path):
+    """A caller-provided fault-free window prevents 58% faulty history becoming baseline."""
+    rows = []
+    for i in range(100):
+        faulty = i >= 42
+        rows.append(
+            {
+                "timestamp": f"2026-11-19T12:{i // 60:02d}:{i % 60:02d}Z",
+                "target_type": "link",
+                "target_id": "core_1-dist_1",
+                "latency_ms": 148.0 if faulty else 15.0,
+                "loss_pct": 0.1,
+                "status": "up",
+            }
+        )
+    insert_measurements(rows, temp_db)
+
+    detector = AnomalyDetector(db_path=temp_db)
+    assert detector.fit_from_db(
+        db_path=temp_db,
+        start="2026-11-19T12:00:00Z",
+        end="2026-11-19T12:00:41Z",
+        limit=42,
+    ) == 1
+
+    baseline = detector.baselines["core_1-dist_1"]
+    assert baseline.latency_median == 15.0
+    assert baseline.sample_count == 42
+
+
+def test_fit_from_db_rejects_invalid_training_limit(temp_db: Path):
+    """Training limits must be validated before reaching SQLite."""
+    detector = AnomalyDetector(db_path=temp_db)
+    for limit in (-1, True, 1.5, "10"):
+        with pytest.raises(ValueError, match="limit"):
+            detector.fit_from_db(db_path=temp_db, limit=limit)
