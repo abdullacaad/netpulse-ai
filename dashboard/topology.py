@@ -204,7 +204,16 @@ def build_topology_figure(
         node_y.append(y)
         node_text.append(node_id)
         node_colors.append(TIER_COLORS.get(str(data.get("type", "")).lower(), "#adb5bd"))
-        node_sizes.append(30 if data.get("type") == "core" else 23)
+        node_type = str(data.get("type", "")).lower()
+        if node_type == "core":
+            node_size = 22
+        elif node_type == "distribution":
+            node_size = 15
+        elif node_type == "access":
+            node_size = 12
+        else:
+            node_size = 9
+        node_sizes.append(node_size)
         node_hover.append(
             f"<b>{node_id}</b><br>"
             f"Type: {data.get('type', 'unknown')}<br>"
@@ -221,7 +230,7 @@ def build_topology_figure(
             mode="markers+text",
             text=node_text,
             textposition="top center",
-            textfont={"size": 9, "color": "#111827"},
+            textfont={"size": 7, "color": "#111827"},
             marker={
                 "size": node_sizes,
                 "color": node_colors,
@@ -240,9 +249,9 @@ def build_topology_figure(
         dragmode="pan",
         plot_bgcolor="#f8fafc",
         paper_bgcolor="#ffffff",
-        margin={"l": 20, "r": 20, "t": 80, "b": 20},
-        xaxis={"visible": False, "range": [-9, 9]},
-        yaxis={"visible": False, "range": [-0.5, 3.5]},
-        height=650,
+        margin={"l": 12, "r": 12, "t": 4, "b": 12},
+        xaxis={"visible": False, "range": [-9, 9], "fixedrange": True},
+        yaxis={"visible": False, "range": [-0.25, 3.25], "fixedrange": True},
+        height=100,
     )
     return fig

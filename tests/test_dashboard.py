@@ -356,3 +356,15 @@ def test_data_as_of_comes_from_monitor_timestamp():
     status = {"timestamp": "2026-11-19T12:34:00+00:00", "targets": {}}
     assert get_data_as_of(status) == "12:34 UTC"
     assert get_data_as_of({}) == "N/A"
+
+
+def test_dashboard_viewport_layout_is_compact():
+    """Verify title clearance and Plotly height fit a 1366x768 laptop viewport."""
+    app_source = Path(__file__).parents[1].joinpath("dashboard", "app.py").read_text(encoding="utf-8")
+    topology_source = Path(__file__).parents[1].joinpath("dashboard", "topology.py").read_text(encoding="utf-8")
+
+    assert 'padding-top: 2.0rem' in app_source
+    assert 'height=100' in app_source
+    assert 'height=100' in topology_source
+    assert 'textfont={"size": 7' in topology_source
+    assert 'position:fixed' in app_source
