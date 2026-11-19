@@ -14,6 +14,13 @@ HEALTH_COLORS = {
     "UNKNOWN": "#adb5bd",
 }
 
+TIER_COLORS = {
+    "core": "#007bff",
+    "distribution": "#20c997",
+    "access": "#fd7e14",
+    "customer": "#adb5bd",
+}
+
 def canonical_link_id(u: str, v: str) -> str:
     """Return the simulator-style canonical link identifier."""
     return f"{u}-{v}"
@@ -196,7 +203,7 @@ def build_topology_figure(
         node_x.append(x)
         node_y.append(y)
         node_text.append(node_id)
-        node_colors.append(HEALTH_COLORS.get(health, HEALTH_COLORS["UNKNOWN"]))
+        node_colors.append(TIER_COLORS.get(str(data.get("type", "")).lower(), "#adb5bd"))
         node_sizes.append(30 if data.get("type") == "core" else 23)
         node_hover.append(
             f"<b>{node_id}</b><br>"
@@ -226,26 +233,9 @@ def build_topology_figure(
         )
     )
 
-    for health, color in (
-        ("Healthy", HEALTH_COLORS["HEALTHY"]),
-        ("Warning", HEALTH_COLORS["WARNING"]),
-        ("Critical", HEALTH_COLORS["CRITICAL"]),
-        ("Unknown", HEALTH_COLORS["UNKNOWN"]),
-    ):
-        fig.add_trace(
-            go.Scatter(
-                x=[None],
-                y=[None],
-                mode="markers",
-                marker={"size": 12, "color": color},
-                name=health,
-            )
-        )
-
     fig.update_layout(
-        title="NetPulse AI - Network Topology",
-        showlegend=True,
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
+        title=None,
+        showlegend=False,
         hovermode="closest",
         dragmode="pan",
         plot_bgcolor="#f8fafc",

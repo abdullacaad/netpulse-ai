@@ -8,8 +8,10 @@ import networkx as nx
 import pytest
 
 from dashboard.app import load_monitor
+from dashboard.app import get_anomaly_count_24h, get_data_as_of, get_slowest_links
 from dashboard.topology import (
     HEALTH_COLORS,
+    TIER_COLORS,
     build_topology_figure,
     build_topology_positions,
     canonical_link_id,
@@ -58,7 +60,7 @@ def test_topology_layout_is_deterministic_and_hierarchical():
 
 
 def test_node_colors_reflect_network_monitor_health():
-    """Verify node marker colors come from live NetworkMonitor health."""
+    """Verify node marker colors use the concept tier palette."""
     monitor = NetworkMonitor()
     for target_id, health, latency, loss, status in (
         ("dist_1", "healthy", 1.0, 0.0, "up"),
@@ -82,10 +84,10 @@ def test_node_colors_reflect_network_monitor_health():
     )
     colors_by_node = dict(zip(node_trace.text, node_trace.marker.color))
 
-    assert colors_by_node["dist_1"] == HEALTH_COLORS["HEALTHY"]
-    assert colors_by_node["dist_2"] == HEALTH_COLORS["WARNING"]
-    assert colors_by_node["dist_3"] == HEALTH_COLORS["CRITICAL"]
-    assert colors_by_node["cust_1"] == HEALTH_COLORS["UNKNOWN"]
+    assert colors_by_node["core_1"] == TIER_COLORS["core"]
+    assert colors_by_node["dist_1"] == TIER_COLORS["distribution"]
+    assert colors_by_node["access_1"] == TIER_COLORS["access"]
+    assert colors_by_node["cust_1"] == TIER_COLORS["customer"]
 
 
 def test_link_colors_reflect_latency_and_packet_loss_state():
@@ -175,7 +177,7 @@ def test_down_target_and_link_are_critical():
         trace for trace in figure.data if getattr(trace, "mode", "") == "markers+text"
     )
     colors_by_node = dict(zip(node_trace.text, node_trace.marker.color))
-    assert colors_by_node["dist_1"] == HEALTH_COLORS["CRITICAL"]
+    assert colors_by_node["dist_1"] == TIER_COLORS["distribution"]
 
     graph = build_topology()
     link_state = get_link_status("core_1", "dist_1", status["targets"])
@@ -212,7 +214,7 @@ def test_load_monitor_populates_status_from_sqlite(tmp_path: Path):
 
 def test_repo_bootstrap_and_read_only_app_source():
     """Verify app.py bootstraps the repo root and contains no live collector access."""
-    app_source = Path(__file__).parents[1].joinpath("dashboard", "app.py").read_text()
+    app_source = Path(__file__).parents[1].joinpath("dashboard", "app.py").read_text(encoding="utf-8")
     assert "sys.path.insert" in app_source
     assert "monitoring.collector" not in app_source
     assert "network.simulator" not in app_source
@@ -246,7 +248,7 @@ def test_empty_database_renders_unknown_no_data():
         trace for trace in figure.data if getattr(trace, "mode", "") == "markers+text"
     )
     cust_index = list(node_trace.text).index("cust_1")
-    assert node_trace.marker.color[cust_index] == HEALTH_COLORS["UNKNOWN"]
+    assert node_trace.marker.color[cust_index] == TIER_COLORS["customer"]
     assert "Status: N/A" in node_trace.hovertext[cust_index]
 
     line_traces = [
@@ -280,14 +282,77 @@ def test_slider_window_is_reloaded_on_each_dashboard_render(tmp_path: Path):
     assert len(short_monitor.get_target_status("core_1-dist_1")["recent_history"]) == 5
     assert len(long_monitor.get_target_status("core_1-dist_1")["recent_history"]) == 6
 
-    app_source = Path(__file__).parents[1].joinpath("dashboard", "app.py").read_text()
+    app_source = Path(__file__).parents[1].joinpath("dashboard", "app.py").read_text(encoding="utf-8")
     assert "monitor = load_monitor(resolved_path, window_size)" in app_source
 
 
 def test_unused_tier_constant_and_link_status_signature_removed():
-    """Verify the tier constant is gone and get_link_status has no graph parameter."""
+    """Verify tier colors exist and get_link_status has no graph parameter."""
     import dashboard.topology as topology_module
 
-    assert not hasattr(topology_module, "TIER_COLORS")
+    assert topology_module.TIER_COLORS == {
+        "core": "#007bff",
+        "distribution": "#20c997",
+        "access": "#fd7e14",
+        "customer": "#adb5bd",
+    }
     parameters = list(inspect.signature(topology_module.get_link_status).parameters)
     assert parameters == ["u", "v", "targets"]
+
+
+def test_slowest_links_table_source_uses_monitor_status():
+    """Verify slowest-links helper sorts live link latencies and keeps unknown last."""
+    network_status = {
+        "targets": {
+            "core_1-dist_1": {
+                "target_id": "core_1-dist_1",
+                "target_type": "link",
+                "current_latency_ms": 15.2,
+                "current_loss_pct": 0.1,
+                "health": "HEALTHY",
+            },
+            "dist_1-access_1": {
+                "target_id": "dist_1-access_1",
+                "target_type": "link",
+                "current_latency_ms": 31.4,
+                "current_loss_pct": 0.3,
+                "health": "WARNING",
+            },
+            "unknown_link": {
+                "target_id": "unknown_link",
+                "target_type": "link",
+                "current_latency_ms": None,
+                "current_loss_pct": None,
+                "health": "UNKNOWN",
+            },
+        }
+    }
+
+    slowest = get_slowest_links(network_status, limit=5)
+    assert [state["target_id"] for state in slowest] == [
+        "dist_1-access_1",
+        "core_1-dist_1",
+        "unknown_link",
+    ]
+
+
+def test_adminlte_app_source_and_anomaly_count(tmp_path: Path):
+    """Verify the rendered source uses AdminLTE colors and reads anomaly count from SQLite."""
+    app_source = Path(__file__).parents[1].joinpath("dashboard", "app.py").read_text(encoding="utf-8")
+    assert "#343a40" in app_source
+    assert "#f4f6f9" in app_source
+    assert "ANOMALIES - 24H" in app_source
+    assert "Slowest links right now" in app_source
+    assert "No active threshold breaches." in app_source
+    assert "from network.simulator" not in app_source
+    assert "from monitoring.collector" not in app_source
+
+    db_path = tmp_path / "anomaly-count.db"
+    assert get_anomaly_count_24h(db_path) == 0
+
+
+def test_data_as_of_comes_from_monitor_timestamp():
+    """Verify data-as-of formatting uses SQLite monitor timestamp."""
+    status = {"timestamp": "2026-11-19T12:34:00+00:00", "targets": {}}
+    assert get_data_as_of(status) == "12:34 UTC"
+    assert get_data_as_of({}) == "N/A"
