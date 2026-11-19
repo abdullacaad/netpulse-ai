@@ -78,12 +78,12 @@ def render_dashboard(db_path: Optional[Union[str, Path]] = None) -> None:
         [data-testid="stHeader"] { background: #ffffff; }
         .block-container {
             background: #f4f6f9;
-            padding-top: 2.0rem;
+            padding-top: 1.25rem;
             margin-top: 0;
             max-width: 100%;
         }
-        [data-testid="stToolbar"] { visibility: hidden; }
-        [data-testid="stDecoration"] { display: none; }
+        [data-testid="stToolbar"] { visibility: visible; }
+        [data-testid="stDecoration"] { display: block; }
         .netpulse-card {
             background: #ffffff;
             border-radius: 6px;
@@ -91,20 +91,20 @@ def render_dashboard(db_path: Optional[Union[str, Path]] = None) -> None:
             box-shadow: 0 1px 3px rgba(0,0,0,.10);
             height: 100%;
         }
-        .stat-card { min-height: 88px; }
+        .stat-card { min-height: 118px; }
         .stat-label {
             color: #6c757d;
             font-size: 12px;
             font-weight: 700;
             text-transform: uppercase;
         }
-        .stat-number { font-size: 26px; font-weight: 800; line-height: 1.1; }
-        .stat-subtext { color: #6c757d; font-size: 10px; margin-top: 3px; }
+        .stat-number { font-size: 32px; font-weight: 800; line-height: 1.1; }
+        .stat-subtext { color: #6c757d; font-size: 12px; margin-top: 5px; }
         .card-progress {
             height: 4px;
             border-radius: 2px;
             background: #e9ecef;
-            margin-top: 6px;
+            margin-top: 12px;
         }
         .card-progress div { height: 4px; border-radius: 2px; }
         .health-pill {
@@ -231,8 +231,8 @@ def render_dashboard(db_path: Optional[Union[str, Path]] = None) -> None:
     )
     figure = build_topology_figure(build_topology(), network_status)
     figure.update_layout(
-        height=100,
-        margin={"l": 12, "r": 12, "t": 4, "b": 12},
+        height=430,
+        margin={"l": 20, "r": 20, "t": 20, "b": 20},
     )
     st.plotly_chart(figure, width="stretch")
     st.markdown(
@@ -254,10 +254,7 @@ def render_dashboard(db_path: Optional[Union[str, Path]] = None) -> None:
 
     bottom_left, bottom_right = st.columns([1, 1])
     with bottom_left:
-        st.markdown(
-            '<div class="netpulse-card" style="position:fixed;z-index:20;bottom:10px;left:310px;width:calc((100vw - 310px)/2 - 12px);min-height:118px;"><div style="font-weight:800;">Breaching targets</div>',
-            unsafe_allow_html=True,
-        )
+        st.markdown('<div class="netpulse-card" style="margin-top:12px;"><div style="font-weight:800;">Breaching targets</div>', unsafe_allow_html=True)
         st.markdown('<div style="font-size:12px;color:#6c757d;margin-bottom:10px;">Links and nodes over their latency or loss thresholds</div>', unsafe_allow_html=True)
         breaching = monitor.get_breaching_targets()
         if not breaching:
@@ -274,10 +271,7 @@ def render_dashboard(db_path: Optional[Union[str, Path]] = None) -> None:
         st.markdown("</div>", unsafe_allow_html=True)
 
     with bottom_right:
-        st.markdown(
-            '<div class="netpulse-card" style="position:fixed;z-index:20;bottom:10px;left:calc(310px + (100vw - 310px)/2);width:calc((100vw - 310px)/2 - 12px);min-height:118px;"><div style="font-weight:800;">Slowest links right now</div>',
-            unsafe_allow_html=True,
-        )
+        st.markdown('<div class="netpulse-card" style="margin-top:12px;"><div style="font-weight:800;">Slowest links right now</div>', unsafe_allow_html=True)
         st.markdown('<div style="font-size:12px;color:#6c757d;margin-bottom:10px;">Highest latency links in the current window</div>', unsafe_allow_html=True)
         slowest = get_slowest_links(network_status, limit=3)
         if not slowest:

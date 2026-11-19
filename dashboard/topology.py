@@ -252,6 +252,6 @@ def build_topology_figure(
         margin={"l": 12, "r": 12, "t": 4, "b": 12},
         xaxis={"visible": False, "range": [-9, 9], "fixedrange": True},
         yaxis={"visible": False, "range": [-0.25, 3.25], "fixedrange": True},
-        height=100,
+        height=430,
     )
     return fig

@@ -363,8 +363,7 @@ def test_dashboard_viewport_layout_is_compact():
     app_source = Path(__file__).parents[1].joinpath("dashboard", "app.py").read_text(encoding="utf-8")
     topology_source = Path(__file__).parents[1].joinpath("dashboard", "topology.py").read_text(encoding="utf-8")
 
-    assert 'padding-top: 2.0rem' in app_source
-    assert 'height=100' in app_source
-    assert 'height=100' in topology_source
+    assert 'padding-top: 1.25rem' in app_source
+    assert 'height=430' in app_source
+    assert 'height=430' in topology_source
     assert 'textfont={"size": 7' in topology_source
-    assert 'position:fixed' in app_source
