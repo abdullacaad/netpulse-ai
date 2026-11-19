@@ -16,7 +16,7 @@ Small ISPs and network teams usually learn about outages from customer complaint
 2. Telemetry collector — gathers latency, packet loss and node health over time
 3. Latency and packet-loss monitoring — thresholds and trends per link and node
 4. Network topology visualisation — the network as a graph (NetworkX)
-5. Anomaly detection — flags unusual latency, loss or node behaviour (scikit-learn)
+5. Anomaly detection — flags unusual latency, loss or node behaviour
 6. Root-cause diagnosis — traces an anomaly to the most likely faulty node or link
 7. Monitoring dashboard — Streamlit UI over all of the above
 
