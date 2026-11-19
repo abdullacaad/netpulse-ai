@@ -15,8 +15,8 @@ Updated whenever work is transferred between assistants. Each entry states what 
   - Added the `anomalies` table and database-owned insert/query helpers.
   - Added evidence, explicit learned bounds, severity, score, and detection method to anomaly records.
   - Kept root-cause diagnosis out of scope.
-- **Verified:** 101/101 pytest tests passing, including injected fault evidence, healthy runs across seeds, and a subtle fault below fixed monitoring warning thresholds.
-- **Status:** PR #12 is open for review on `feature/anomaly-detection` at head commit `42f83bc52546eb4e44ed88fd0dd794966c47f486`.
+- **Verified:** 105/105 pytest tests passing, including injected fault evidence, healthy runs across seeds, a subtle fault below fixed monitoring warning thresholds, and reversed training-window validation.
+- **Status:** PR #12 open on branch `feature/anomaly-detection`; see the PR for the current head.
 
 ## 2026-11-18 — Network topology visualisation (Issue #4)
 

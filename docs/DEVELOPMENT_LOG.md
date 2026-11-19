@@ -15,7 +15,7 @@ Record of what was done, when, and by whom. Newest entries at the top.
   - `insert_anomalies()` and `query_anomalies()` for evidence round-trips.
 - Added `intelligence/__init__.py` exports.
 - Added tests for injected congestion, subtle below-threshold faults, healthy runs across seeds, packet loss, node down, and SQLite baseline loading.
-- Full test suite passing (101/101 tests).
+- Full test suite passing (105/105 tests).
 
 ## 2026-11-18 — Network topology visualisation (Issue #4)
 

@@ -1,7 +1,7 @@
 """Baseline anomaly detection for NetPulse AI telemetry."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Union
 import statistics
@@ -100,6 +100,17 @@ def _upper_bound(median_value: Optional[float], mad_value: Optional[float], metr
     return round(median_value + max(mad_floor, relative_floor, absolute_floor), 6)
 
 
+def _training_bound(value: Union[str, datetime]) -> datetime:
+    """Normalize a training-window bound to a timezone-aware datetime."""
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 class AnomalyDetector:
     """Learns per-target robust baselines and stores flagged anomalies."""
 
@@ -182,6 +193,9 @@ class AnomalyDetector:
             limit is not None and (not isinstance(limit, int) or limit < 0)
         ):
             raise ValueError("limit must be None or a non-negative integer")
+        if start is not None and end is not None:
+            if _training_bound(start) > _training_bound(end):
+                raise ValueError("start must be less than or equal to end")
         path = db_path if db_path is not None else self.db_path
         target_ids = [target_id] if target_id is not None else list_target_ids(path)
         normal_rows: List[Dict[str, Any]] = []

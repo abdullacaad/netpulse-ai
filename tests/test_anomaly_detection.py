@@ -244,3 +244,14 @@ def test_fit_from_db_rejects_invalid_training_limit(temp_db: Path):
     for limit in (-1, True, 1.5, "10"):
         with pytest.raises(ValueError, match="limit"):
             detector.fit_from_db(db_path=temp_db, limit=limit)
+
+
+def test_fit_from_db_rejects_reversed_training_window(temp_db: Path):
+    """A start timestamp later than end must raise instead of returning no training set."""
+    detector = AnomalyDetector(db_path=temp_db)
+    with pytest.raises(ValueError, match="start must be less than or equal to end"):
+        detector.fit_from_db(
+            db_path=temp_db,
+            start="2026-11-19T12:00:10Z",
+            end="2026-11-19T12:00:01Z",
+        )
