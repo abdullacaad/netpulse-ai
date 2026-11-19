@@ -367,3 +367,12 @@ def test_dashboard_viewport_layout_is_compact():
     assert 'height=430' in app_source
     assert 'height=430' in topology_source
     assert 'textfont={"size": 7' in topology_source
+
+
+def test_dashboard_hides_connecting_status_and_uses_clean_table_classes():
+    """Verify Streamlit connecting UI is hidden and slowest links use AdminLTE-style rows."""
+    app_source = Path(__file__).parents[1].joinpath("dashboard", "app.py").read_text(encoding="utf-8")
+
+    assert '[data-testid="stStatusWidget"]' in app_source
+    assert '.netpulse-table' in app_source
+    assert '<table class="netpulse-table">' in app_source

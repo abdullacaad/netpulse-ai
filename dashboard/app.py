@@ -76,6 +76,8 @@ def render_dashboard(db_path: Optional[Union[str, Path]] = None) -> None:
         }
         [data-testid="stSidebar"] * { color: #c2c7d0; }
         [data-testid="stHeader"] { background: #ffffff; }
+        [data-testid="stStatusWidget"] { display: none !important; }
+        .stStatusWidget { display: none !important; }
         .block-container {
             background: #f4f6f9;
             padding-top: 1.25rem;
@@ -113,6 +115,26 @@ def render_dashboard(db_path: Optional[Union[str, Path]] = None) -> None:
             padding: 2px 8px;
             font-size: 11px;
             font-weight: 700;
+        }
+        .netpulse-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        .netpulse-table th {
+            background: #f8f9fa;
+            color: #6c757d;
+            font-size: 10px;
+            text-align: left;
+            padding: 7px 6px;
+            border: none;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .netpulse-table td {
+            color: #343a40;
+            padding: 7px 6px;
+            border: none;
+            border-bottom: 1px solid #f1f3f5;
         }
         .empty-state {
             background: #d4edda;
@@ -292,16 +314,16 @@ def render_dashboard(db_path: Optional[Union[str, Path]] = None) -> None:
                     )
                 )
             table_html = (
-                '<table style="width:100%;border-collapse:collapse;font-size:12px;">'
-                "<tr><th style='text-align:left;'>LINK</th><th>LATENCY</th><th>LOSS</th><th>HEALTH</th></tr>"
+                '<table class="netpulse-table">'
+                "<thead><tr><th>LINK</th><th>LATENCY</th><th>LOSS</th><th>HEALTH</th></tr></thead><tbody>"
                 + "".join(
                     "<tr>"
-                    f"<td style='padding:6px 0;'>{row[0]}</td>"
+                    f"<td>{row[0]}</td>"
                     f"<td>{row[1]}</td><td>{row[2]}</td><td>{row[3]}</td>"
                     "</tr>"
                     for row in rows
                 )
-                + "</table>"
+                + "</tbody></table>"
             )
             st.markdown(table_html, unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
